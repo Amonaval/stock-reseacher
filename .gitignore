@@ -1,0 +1,26 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.streamlit/secrets.toml
+.env
+*.log
+.DS_Store
+Thumbs.db
+
+# Runtime/generated research outputs
+# Keep committed SAMPLE fixtures; ignore user-generated outputs.
+data/*
+!data/*_SAMPLE.json
+!data/master_strategies_SAMPLE.json
+!data/strategy_execution_manifest_SAMPLE.json
+reports/*
+!reports/*_SAMPLE.md
+!reports/*_SAMPLE_FROM_USER_XLSX.md
+
+# User/private research inputs
+uploads/
+private/
+*.xlsx
+*.xls
