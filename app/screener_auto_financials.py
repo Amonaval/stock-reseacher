@@ -3,10 +3,10 @@ from __future__ import annotations
 import math
 import re
 import time
-from collections import defaultdict
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import quote, urlparse
 
 from playwright.sync_api import sync_playwright
+from runtime_settings import get_screener_delay
 
 
 def _norm(s):
@@ -47,7 +47,6 @@ def _goto(page, url, timeout=30000):
         pass
 
 
-# Screener export aliases -> V3 canonical fields.
 SNAPSHOT_ALIASES = {
     "price": ["cmp rs.", "cmp rs", "cmp", "current price", "price"],
     "market_cap": ["mar cap rs.cr.", "mar cap rs.cr", "market cap", "market capitalization"],
@@ -86,7 +85,6 @@ def _extract_company_links(page, company):
     current = page.url
     if "/company/" in urlparse(current).path and "/search/" not in urlparse(current).path:
         return [current]
-
     links = []
     for href in page.locator("a[href*='/company/']").evaluate_all(
         "els => els.map(e => ({href:e.href,text:(e.innerText||'').trim()}))"
@@ -123,24 +121,19 @@ def _parse_table(page, section_selector):
     table = section.locator("table").first
     if table.count() == 0:
         return {"periods": [], "rows": {}}
-
     matrix = table.locator("tr").evaluate_all(
         "rows => rows.map(r => Array.from(r.querySelectorAll('th,td')).map(c => (c.innerText||'').trim()))"
     )
     if not matrix:
         return {"periods": [], "rows": {}}
-
-    header = matrix[0]
-    periods = [re.sub(r"\s+", " ", x).strip() for x in header[1:]]
+    periods = [re.sub(r"\s+", " ", x).strip() for x in matrix[0][1:]]
     rows = {}
     for cells in matrix[1:]:
         if not cells:
             continue
         label = re.sub(r"\s+", " ", cells[0]).strip().rstrip("+").strip()
-        if not label:
-            continue
-        vals = cells[1:][:len(periods)]
-        rows[_norm(label)] = {"label": label, "values": vals}
+        if label:
+            rows[_norm(label)] = {"label": label, "values": cells[1:1 + len(periods)]}
     return {"periods": periods, "rows": rows}
 
 
@@ -166,8 +159,6 @@ def _annual_period(period):
 def _top_ratios(page):
     out = {}
     loc = page.locator("#top-ratios li")
-    if loc.count() == 0:
-        return out
     for i in range(loc.count()):
         text = re.sub(r"\s+", " ", loc.nth(i).inner_text()).strip()
         for label, key in [
@@ -183,17 +174,14 @@ def _top_ratios(page):
 
 
 def extract_company_financial_history(page, company, url=""):
-    # Exact captured company URL wins. Search is only a fallback when identity is missing.
     if not url:
         url = resolve_company_url(page, company)
     _goto(page, url, 30000)
-
     top = _top_ratios(page)
     pnl = _parse_table(page, "#profit-loss")
     bs = _parse_table(page, "#balance-sheet")
     cf = _parse_table(page, "#cash-flow")
     ratios = _parse_table(page, "#ratios")
-
     periods = pnl.get("periods", [])
     series = {
         "sales": _get_row(pnl, ["sales", "revenue"]),
@@ -206,7 +194,6 @@ def extract_company_financial_history(page, company, url=""):
         "fcf": _get_row(cf, ["free cash flow"]),
         "roce": _get_row(ratios, ["roce %", "roce"]),
     }
-
     rows = []
     for idx, period in enumerate(periods):
         if not _annual_period(period):
@@ -221,28 +208,25 @@ def extract_company_financial_history(page, company, url=""):
         for metric, values in series.items():
             row[metric] = _num(values[idx]) if idx < len(values) else None
         rows.append(row)
-
     if not rows:
         rows = [{
-            "company": company,
-            "symbol": "",
-            "year": "Latest",
-            "source": "screener_company_page",
-            "source_url": page.url,
+            "company": company, "symbol": "", "year": "Latest",
+            "source": "screener_company_page", "source_url": page.url,
         }]
-
     rows[-1].update({k: v for k, v in top.items() if v is not None})
     return rows, page.url
 
 
 def enrich_candidate_universe(candidates, cdp_url="http://127.0.0.1:9222", use_screener=True,
-                              delay=0.45, max_companies=0, progress=None):
-    """Build V3-ready rows without ever navigating the user's app tab."""
-    selected = list(candidates[:int(max_companies)]) if max_companies else list(candidates)
-    all_rows = []
-    errors = []
-    resolved = []
+                              delay=None, max_companies=0, progress=None):
+    """Build V3-ready rows without navigating the user's app tab.
 
+    The operator-configured Screener pacing is used unless a caller explicitly
+    supplies a delay. Exact company URLs are preferred over name search.
+    """
+    delay = get_screener_delay() if delay is None else max(0.0, float(delay))
+    selected = list(candidates[:int(max_companies)]) if max_companies else list(candidates)
+    all_rows, errors, resolved = [], [], []
     playwright = None
     page = None
     return_page = None
@@ -266,15 +250,15 @@ def enrich_candidate_universe(candidates, cdp_url="http://127.0.0.1:9222", use_s
             snapshot = snapshot_from_result_row(candidate)
             history = []
             company_url = candidate.get("url", "") or ""
-
             if use_screener:
                 try:
+                    if i > 1 and delay > 0:
+                        time.sleep(delay)
                     history, company_url = extract_company_financial_history(page, company, company_url)
                     resolved.append({"company": company, "url": company_url, "status": "ENRICHED"})
                 except Exception as exc:
                     errors.append({"company": company, "stage": "screener_history", "error": str(exc)})
                     resolved.append({"company": company, "url": company_url, "status": "SNAPSHOT_ONLY"})
-
             if not history:
                 history = [{
                     "company": company,
@@ -283,21 +267,17 @@ def enrich_candidate_universe(candidates, cdp_url="http://127.0.0.1:9222", use_s
                     "source": "screener_result_export",
                     "source_url": company_url,
                 }]
-
             latest = history[-1]
             for key, value in snapshot.items():
                 if value is not None and latest.get(key) is None:
                     latest[key] = value
-
             latest["strategy_count"] = candidate.get("strategy_count", 0)
             latest["strategies"] = candidate.get("strategies", "")
             latest["research_priority"] = candidate.get("research_priority_score", 0)
             latest["company_url"] = company_url
             all_rows.extend(history)
-
             if progress:
                 progress(i, len(selected), company, resolved[-1]["status"] if resolved else "SNAPSHOT")
-            time.sleep(max(0, delay))
     finally:
         try:
             if page and not page.is_closed():
@@ -314,5 +294,4 @@ def enrich_candidate_universe(candidates, cdp_url="http://127.0.0.1:9222", use_s
                 playwright.stop()
             except Exception:
                 pass
-
     return all_rows, resolved, errors
