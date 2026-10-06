@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 import time
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from playwright.sync_api import sync_playwright
 
 from crawler import discover_candidates, crawl_selected_urls
+
 
 SCREENER = "https://www.screener.in"
 
@@ -16,15 +17,11 @@ def _clean(text: str) -> str:
 
 def _number(text):
     s = _clean(text).replace(",", "").replace("%", "")
-    if s in {"", "-", "—"}:
-        return None
+    if s in {"", "-", "—"}: return None
     m = re.search(r"-?\d+(?:\.\d+)?", s)
-    if not m:
-        return s
-    try:
-        return float(m.group())
-    except Exception:
-        return s
+    if not m: return s
+    try: return float(m.group())
+    except Exception: return s
 
 
 class ScreenerAdapter:
@@ -37,10 +34,7 @@ class ScreenerAdapter:
     def __init__(self, cdp_url: str = "http://127.0.0.1:9222", delay: float = 0.35):
         self.cdp_url = cdp_url
         self.delay = delay
-        self._pw = None
-        self.browser = None
-        self.context = None
-        self.page = None
+        self._pw = None; self.browser = None; self.context = None; self.page = None
 
     def __enter__(self):
         self._pw = sync_playwright().start()
@@ -58,8 +52,7 @@ class ScreenerAdapter:
     def connection_status(self) -> dict:
         self.page.goto(SCREENER, wait_until="domcontentloaded", timeout=60000)
         body = _clean(self.page.locator("body").inner_text(timeout=5000))
-        hrefs = self.page.locator("a[href]").evaluate_all("els=>els.map(e=>e.getAttribute('href')||'').join(' ')")
-        logged_in = "logout" in body.casefold() or "sign out" in body.casefold() or "/account/" in hrefs
+        logged_in = "logout" in body.casefold() or "sign out" in body.casefold() or "/account/" in self.page.locator("a[href]").evaluate_all("els=>els.map(e=>e.getAttribute('href')||'').join(' ')")
         return {"connected": True, "logged_in": bool(logged_in), "url": self.page.url}
 
     @staticmethod
@@ -71,7 +64,8 @@ class ScreenerAdapter:
         return crawl_selected_urls(cdp_url, urls, progress=progress)
 
     def _query_input(self):
-        for selector in ["textarea[name='query']", "textarea[name*=query i]", "textarea", "input[name*=query i]"]:
+        selectors = ["textarea[name='query']", "textarea[name*=query i]", "textarea", "input[name*=query i]"]
+        for selector in selectors:
             loc = self.page.locator(selector)
             for i in range(loc.count()):
                 el = loc.nth(i)
@@ -110,14 +104,16 @@ class ScreenerAdapter:
         return {"url": self.page.url, "title": self.page.title()}
 
     def _result_table(self):
-        for sel in ["table.data-table", "table"]:
+        selectors = ["table.data-table", "table"]
+        for sel in selectors:
             tables = self.page.locator(sel)
             for i in range(tables.count()):
                 table = tables.nth(i)
                 try:
                     headers = table.locator("thead th").all_inner_texts()
                     if not headers:
-                        headers = table.locator("tr").first.locator("th,td").all_inner_texts()
+                        first = table.locator("tr").first.locator("th,td").all_inner_texts()
+                        headers = first
                     header_text = " ".join(headers).casefold()
                     if any(k in header_text for k in ["name", "cmp", "market cap", "p/e", "sales"]):
                         return table
@@ -130,8 +126,9 @@ class ScreenerAdapter:
         headers = [_clean(x) for x in table.locator("thead th").all_inner_texts()]
         rows = table.locator("tbody tr")
         if not headers:
-            headers = [_clean(x) for x in table.locator("tr").first.locator("th,td").all_inner_texts()]
-            rows = table.locator("tr")
+            header_cells = table.locator("tr").first.locator("th,td").all_inner_texts()
+            headers = [_clean(x) for x in header_cells]
+            rows = table.locator("tr").nth(1).locator("xpath=..") if False else table.locator("tr").filter(has_not=table.locator("th"))
 
         out = []
         for i in range(rows.count()):
@@ -188,3 +185,41 @@ class ScreenerAdapter:
             self.page.wait_for_timeout(350)
             time.sleep(self.delay)
         return all_rows
+
+    def discover_company_documents(self, company_url: str, company: str = "") -> list[dict]:
+        """Collect document links already exposed on a Screener company page.
+
+        This gives company research a zero-upload path even when no external search
+        API is configured. Only links already visible in the user's company page
+        are considered; missing classes remain explicit research gaps.
+        """
+        self.page.goto(company_url, wait_until="domcontentloaded", timeout=60000)
+        self.page.wait_for_timeout(350)
+        keywords = {
+            "annual_report": ["annual report"],
+            "quarterly_result": ["financial result", "results"],
+            "investor_presentation": ["presentation"],
+            "earnings_call": ["transcript", "concall", "conference call"],
+            "credit_rating": ["credit rating", "rating rationale"],
+            "exchange_filing": ["announcement", "filing", "bse", "nse"],
+        }
+        rows=[]; seen=set()
+        links=self.page.locator("a[href]")
+        for i in range(links.count()):
+            a=links.nth(i)
+            try:
+                href=a.get_attribute("href") or ""; text=_clean(a.inner_text())
+            except Exception:
+                continue
+            hay=f"{text} {href}".casefold(); doc_type=""
+            for typ, words in keywords.items():
+                if any(w in hay for w in words):
+                    doc_type=typ; break
+            if not doc_type or not href:
+                continue
+            url=urljoin(self.page.url, href)
+            if url in seen:
+                continue
+            seen.add(url)
+            rows.append({"company":company,"url":url,"doc_type":doc_type,"title":text or url,"source":"screener_company_page"})
+        return rows
