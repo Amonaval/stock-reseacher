@@ -128,16 +128,31 @@ class ResearchService:
                     self.run.log("RESEARCH", "SOURCE_DISCOVERY_FAILED", str(exc), company=company.company, status="WARN")
                 if progress: progress(i, len(eligible), company.company, "discover")
 
+        try:
+            from source_discovery import BraveSearchProvider, discover_company_sources
+            from source_policy import dedupe_and_rank
+            provider=BraveSearchProvider()
+            if provider.configured():
+                for company in eligible:
+                    rows, errs=discover_company_sources(company.company, provider=provider, max_per_query=4)
+                    source_rows.extend(rows)
+                    for err in errs:
+                        self.run.log("RESEARCH","WEB_SOURCE_DISCOVERY_FAILED",err.get("error",str(err)),company=company.company,status="WARN")
+                source_rows=dedupe_and_rank(source_rows)
+                self.run.log("RESEARCH","WEB_SOURCE_DISCOVERY",f"Expanded research queue to {len(source_rows)} deduplicated sources using the configured web-search provider.")
+        except Exception as exc:
+            self.run.log("RESEARCH","WEB_SOURCE_DISCOVERY_SKIPPED",f"Optional web-source discovery unavailable: {exc}",status="WARN")
+
         documents, fetch_errors = fetch_manifest(source_rows, progress=None) if source_rows else ([], [])
         evidence, extraction_errors = extract_research_evidence(documents, use_llm=use_llm)
         financial_context = [c.financial_assessment for c in eligible]
         memories = build_company_research_memory(documents, evidence, financial_ranked=financial_context)
-        memory_map={str(m.get("company","")).strip().casefold():m for m in memories}
+        memory_map={str(m.get("company"," ")).strip().casefold():m for m in memories}
 
         for company in eligible:
             key=company.company.strip().casefold(); memory=memory_map.get(key)
-            company.documents=[d for d in documents if str(d.get("company","")).strip().casefold()==key]
-            company.evidence=[e for e in evidence if str(e.get("company","")).strip().casefold()==key]
+            company.documents=[d for d in documents if str(d.get("company"," ")).strip().casefold()==key]
+            company.evidence=[e for e in evidence if str(e.get("company"," ")).strip().casefold()==key]
             if memory:
                 company.research_questions=[]
                 missing_required={"annual_report","quarterly_result","investor_presentation","earnings_call","exchange_filing","credit_rating"}-set(memory.get("document_types",[]))
@@ -152,3 +167,41 @@ class ResearchService:
         self.run.status="RESEARCH_COMPLETE"
         self.run.save(self.runs_root)
         return memories
+
+    def plan_deep_research(self, memories: list[dict], budgets: dict | None = None) -> dict:
+        from research_depth_planner import plan_research_depth
+        plan=plan_research_depth(memories,budgets)
+        self.run.stage_summary["research_depth"]=plan["counts"]
+        for row in plan["rows"]:
+            company=self.run.ensure_company(row["company"])
+            company.decisions.append({"stage":"RESEARCH_DEPTH","decision":row["stage"],"reason":row["reason"]})
+            self.run.log("RESEARCH_DEPTH","DEPTH_DECISION",f"{row['stage']}: {row['reason']}",company=row["company"],details={k:row[k] for k in ["documents","document_coverage","evidence_quality","research_readiness","risk_items"]})
+        self.run.log("RESEARCH_DEPTH","PLANNING_COMPLETE",f"Research-depth allocation complete: {plan['counts']}.")
+        self.run.status="RESEARCH_DEPTH_PLANNED"
+        self.run.save(self.runs_root)
+        return plan
+
+    def run_adversarial_research(self, memories: list[dict], plan: dict, progress: Callable | None = None) -> list[dict]:
+        from v6_pipeline import run_v6
+        names=[r["company"] for r in plan.get("rows",[]) if r.get("stage")=="ADVERSARIAL"]
+        if not names:
+            self.run.log("ADVERSARIAL","NO_READY_COMPANIES","No company currently passes the adversarial evidence gate.",status="WARN")
+            return []
+        self.run.log("ADVERSARIAL","START",f"Running independent Bull/Bear challenge for {len(names)} evidence-ready companies.")
+        results=run_v6(memories,finalist_names=names,progress=progress)
+        by_name={str(r.get("company"," ")).casefold():r for r in results}
+        for company in self.run.companies.values():
+            r=by_name.get(company.company.casefold())
+            if not r: continue
+            bundle=r.get("bull_bear",{})
+            company.bull_case=bundle.get("bull",{})
+            company.bear_case=bundle.get("bear",{})
+            company.contradiction_review=r.get("challenge",{})
+            c=r.get("classification",{})
+            company.decisions.append({"stage":"ADVERSARIAL","decision":c.get("thesis_status"),"reason":r.get("challenge",{}).get("challenge_summary","")})
+            self.run.log("ADVERSARIAL","COMPANY_CHALLENGED",f"{c.get('thesis_status')} · thesis balance {c.get('thesis_balance')} · fragility {c.get('fragility_score')}",company=company.company,details={"bull_strength":c.get("bull_strength"),"bear_strength":c.get("bear_strength"),"unresolved":c.get("unresolved_questions",[])})
+        self.run.stage_summary["adversarial"]={"companies":len(results)}
+        self.run.log("ADVERSARIAL","COMPLETE",f"Bull/Bear challenge completed for {len(results)} companies. These are research states, not buy/sell recommendations.")
+        self.run.status="ADVERSARIAL_COMPLETE"
+        self.run.save(self.runs_root)
+        return results
