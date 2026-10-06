@@ -27,6 +27,8 @@ DEFAULTS = {
     "candidate_universe": [],
     "manual_candidate_rows": [],
     "connection": None,
+    "financial_assessments": [],
+    "research_memories": [],
 }
 for k, v in DEFAULTS.items():
     st.session_state.setdefault(k, v)
@@ -68,6 +70,8 @@ with T_RESEARCH:
         st.session_state.strategies = []
         st.session_state.candidate_universe = []
         st.session_state.manual_candidate_rows = []
+        st.session_state.financial_assessments = []
+        st.session_state.research_memories = []
         st.success(f"Created {st.session_state.run.run_id}")
     if b.button("Check Screener connection"):
         try:
@@ -165,6 +169,34 @@ with T_RESEARCH:
             except Exception as exc:
                 st.error(str(exc)); run.log("SCREENING", "SCREENING_FAILED", str(exc), status="ERROR")
 
+    st.markdown("### 3. Analyze candidate financials")
+    universe = st.session_state.candidate_universe
+    if universe:
+        st.caption("No additional financial spreadsheet is required. Exact company links from screening are used first; missing data is logged as a retry rather than silently treated as neutral.")
+        if st.button("Analyze financials automatically", type="primary"):
+            bar=st.progress(0); message=st.empty()
+            try:
+                def fprogress(i,n,company,status):
+                    bar.progress(i/max(n,1)); message.write(f"{i}/{n} {company} — {status}")
+                st.session_state.financial_assessments = ResearchService(run, RUNS).collect_financials(cdp, universe, fprogress)
+                st.success("Financial assessment complete. Decisions are coverage-aware; low-data companies are routed to DATA_RETRY instead of receiving a confident pass.")
+            except Exception as exc:
+                st.error(str(exc)); run.log("FINANCIAL","FINANCIAL_STAGE_FAILED",str(exc),status="ERROR")
+
+    st.markdown("### 4. Research surviving companies")
+    if st.session_state.financial_assessments:
+        eligible=sum(1 for x in st.session_state.financial_assessments if x.get("decision") in {"ADVANCE","WATCHLIST"})
+        st.caption(f"{eligible} companies currently qualify for company/source research. The app discovers documents itself; uploads are debug overrides only.")
+        if st.button("Research companies automatically"):
+            bar=st.progress(0); message=st.empty()
+            try:
+                def rprogress(i,n,company,status):
+                    bar.progress(i/max(n,1)); message.write(f"{i}/{n} {company} — {status}")
+                st.session_state.research_memories = ResearchService(run,RUNS).collect_company_research(cdp,use_llm=False,progress=rprogress)
+                st.success("Company research memory built from automatically discovered/fetched sources where available.")
+            except Exception as exc:
+                st.error(str(exc)); run.log("RESEARCH","RESEARCH_STAGE_FAILED",str(exc),status="ERROR")
+
     st.markdown("### Research log")
     if run.events:
         st.dataframe(event_df(run), use_container_width=True, hide_index=True)
@@ -189,6 +221,16 @@ with T_COMPANIES:
         st.info("Run screening first. Candidate Universe = all unique companies that passed at least one enabled strategy.")
     else:
         st.metric("Unique candidates", len(universe))
+        if st.session_state.financial_assessments:
+            fdf=pd.DataFrame([{
+                "Company":x.get("company"),"Decision":x.get("decision"),"Evidence coverage %":x.get("data_confidence"),
+                "Growth":(x.get("labels") or {}).get("growth"),"Capital efficiency":(x.get("labels") or {}).get("capital_efficiency"),
+                "Balance sheet":(x.get("labels") or {}).get("balance_sheet"),"Cash generation":(x.get("labels") or {}).get("cash_generation"),
+                "Valuation":(x.get("labels") or {}).get("valuation"),"Why":x.get("decision_reason")
+            } for x in st.session_state.financial_assessments])
+            st.markdown("### Financial research decisions")
+            st.dataframe(fdf,use_container_width=True,hide_index=True)
+            st.caption("Numeric scores are internal ordering aids. The user-facing decision is driven by evidence coverage, hard risk gates, qualitative dimensions and an explicit reason.")
         rows = []
         for x in universe:
             rows.append({
@@ -218,4 +260,4 @@ with T_SETTINGS:
         strategies = st.session_state.strategies or [{"id": sid, "name": "Imported", "evidence_confidence": 50}]
         st.session_state.candidate_universe = build_candidate_universe(st.session_state.manual_candidate_rows, strategies)
         st.success(f"Built {len(st.session_state.candidate_universe)} unique candidates.")
-    st.caption("Exact Excel hyperlinks are not preserved by pandas alone; the normal live-Screener path captures the href directly from the result page. Batch 2 will also add hyperlink-aware debug imports.")
+    st.caption("Debug imports preserve Excel cell hyperlinks when present; normal live-Screener runs capture exact hrefs directly from the result table.")
