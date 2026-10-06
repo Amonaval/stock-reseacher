@@ -31,6 +31,22 @@ def _num(v):
         return float(m.group()) if m else None
 
 
+def _is_app_page(page):
+    try:
+        url = (page.url or "").lower()
+    except Exception:
+        return False
+    return "localhost:8501" in url or "127.0.0.1:8501" in url or "streamlit" in url
+
+
+def _goto(page, url, timeout=30000):
+    page.goto(url, wait_until="commit", timeout=timeout)
+    try:
+        page.wait_for_load_state("domcontentloaded", timeout=min(timeout, 10000))
+    except Exception:
+        pass
+
+
 # Screener export aliases -> V3 canonical fields.
 SNAPSHOT_ALIASES = {
     "price": ["cmp rs.", "cmp rs", "cmp", "current price", "price"],
@@ -53,7 +69,6 @@ SNAPSHOT_ALIASES = {
 
 
 def snapshot_from_result_row(row):
-    """Map preserved Screener result columns into V3 canonical snapshot metrics."""
     raw = row.get("snapshot") or {}
     normalized = {_norm(k): v for k, v in raw.items()}
     out = {}
@@ -68,7 +83,6 @@ def snapshot_from_result_row(row):
 
 
 def _extract_company_links(page, company):
-    # Search endpoint can redirect directly or return a list of company links.
     current = page.url
     if "/company/" in urlparse(current).path and "/search/" not in urlparse(current).path:
         return [current]
@@ -95,8 +109,7 @@ def _extract_company_links(page, company):
 def resolve_company_url(page, company):
     q = quote(str(company))
     url = f"https://www.screener.in/company/search/?q={q}"
-    page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    page.wait_for_timeout(350)
+    _goto(page, url, 20000)
     links = _extract_company_links(page, company)
     if not links:
         raise RuntimeError(f"Could not resolve Screener company page for {company}")
@@ -117,7 +130,6 @@ def _parse_table(page, section_selector):
     if not matrix:
         return {"periods": [], "rows": {}}
 
-    # Header usually starts with a blank/label cell followed by periods.
     header = matrix[0]
     periods = [re.sub(r"\s+", " ", x).strip() for x in header[1:]]
     rows = {}
@@ -127,9 +139,7 @@ def _parse_table(page, section_selector):
         label = re.sub(r"\s+", " ", cells[0]).strip().rstrip("+").strip()
         if not label:
             continue
-        vals = cells[1:]
-        # Normalize length to periods; extra action columns are ignored.
-        vals = vals[:len(periods)]
+        vals = cells[1:][:len(periods)]
         rows[_norm(label)] = {"label": label, "values": vals}
     return {"periods": periods, "rows": rows}
 
@@ -140,7 +150,6 @@ def _get_row(table, aliases):
         key = _norm(alias)
         if key in rows:
             return rows[key]["values"]
-    # Fuzzy fallback for labels like 'Net Profit +' or whitespace variants.
     for key, row in rows.items():
         if any(_norm(alias) in key for alias in aliases):
             return row["values"]
@@ -161,14 +170,12 @@ def _top_ratios(page):
         return out
     for i in range(loc.count()):
         text = re.sub(r"\s+", " ", loc.nth(i).inner_text()).strip()
-        # Most rows are: Metric Value
         for label, key in [
             ("Stock P/E", "pe"), ("ROCE", "roce"), ("ROE", "roe"),
             ("Market Cap", "market_cap"), ("Current Price", "price"),
             ("Dividend Yield", "dividend_yield"), ("Book Value", "book_value"),
         ]:
             if label.casefold() in text.casefold():
-                # prefer last numeric token
                 nums = re.findall(r"-?\d[\d,]*(?:\.\d+)?", text)
                 if nums:
                     out[key] = _num(nums[-1])
@@ -176,10 +183,10 @@ def _top_ratios(page):
 
 
 def extract_company_financial_history(page, company, url=""):
+    # Exact captured company URL wins. Search is only a fallback when identity is missing.
     if not url:
         url = resolve_company_url(page, company)
-    page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    page.wait_for_timeout(450)
+    _goto(page, url, 30000)
 
     top = _top_ratios(page)
     pnl = _parse_table(page, "#profit-loss")
@@ -200,8 +207,6 @@ def extract_company_financial_history(page, company, url=""):
         "roce": _get_row(ratios, ["roce %", "roce"]),
     }
 
-    # Map each annual P&L period into one canonical V3 row. Other tables usually
-    # use the same annual column labels; values are matched by position when possible.
     rows = []
     for idx, period in enumerate(periods):
         if not _annual_period(period):
@@ -217,43 +222,44 @@ def extract_company_financial_history(page, company, url=""):
             row[metric] = _num(values[idx]) if idx < len(values) else None
         rows.append(row)
 
-    # If no annual history parsed, still return a current snapshot row.
     if not rows:
         rows = [{
-            "company": company, "symbol": "", "year": "Latest",
-            "source": "screener_company_page", "source_url": page.url,
+            "company": company,
+            "symbol": "",
+            "year": "Latest",
+            "source": "screener_company_page",
+            "source_url": page.url,
         }]
 
-    # Apply current top-ratio snapshot to latest row only.
     rows[-1].update({k: v for k, v in top.items() if v is not None})
     return rows, page.url
 
 
 def enrich_candidate_universe(candidates, cdp_url="http://127.0.0.1:9222", use_screener=True,
                               delay=0.45, max_companies=0, progress=None):
-    """
-    Build V3-ready multi-period rows automatically.
-
-    Layer 1: always retain ratios from imported Screener result files.
-    Layer 2: optionally enrich with multi-year data from Screener company pages
-             through the user's local logged-in browser session.
-    """
+    """Build V3-ready rows without ever navigating the user's app tab."""
     selected = list(candidates[:int(max_companies)]) if max_companies else list(candidates)
     all_rows = []
     errors = []
     resolved = []
 
-    browser_ctx = None
     playwright = None
     page = None
+    return_page = None
     try:
         if use_screener:
             playwright = sync_playwright().start()
             browser = playwright.chromium.connect_over_cdp(cdp_url)
             if not browser.contexts:
                 raise RuntimeError("Connected to Chrome but no browser context was found.")
-            browser_ctx = browser.contexts[0]
-            page = browser_ctx.pages[0] if browser_ctx.pages else browser_ctx.new_page()
+            context = browser.contexts[0]
+            existing = list(context.pages)
+            return_page = next((p for p in existing if _is_app_page(p)), None)
+            if return_page is None:
+                return_page = next((p for p in existing if "screener.in" not in (p.url or "").lower() and (p.url or "") != "about:blank"), None)
+            page = context.new_page()
+            page.set_default_timeout(10000)
+            page.set_default_navigation_timeout(30000)
 
         for i, candidate in enumerate(selected, 1):
             company = candidate.get("company", "")
@@ -278,14 +284,11 @@ def enrich_candidate_universe(candidates, cdp_url="http://127.0.0.1:9222", use_s
                     "source_url": company_url,
                 }]
 
-            # Merge imported snapshot into latest period. This deliberately
-            # preserves known ratios even if company-page extraction misses them.
             latest = history[-1]
             for key, value in snapshot.items():
                 if value is not None and latest.get(key) is None:
                     latest[key] = value
 
-            # Fields not derivable from source remain None and reduce V3 confidence.
             latest["strategy_count"] = candidate.get("strategy_count", 0)
             latest["strategies"] = candidate.get("strategies", "")
             latest["research_priority"] = candidate.get("research_priority_score", 0)
@@ -296,6 +299,16 @@ def enrich_candidate_universe(candidates, cdp_url="http://127.0.0.1:9222", use_s
                 progress(i, len(selected), company, resolved[-1]["status"] if resolved else "SNAPSHOT")
             time.sleep(max(0, delay))
     finally:
+        try:
+            if page and not page.is_closed():
+                page.close()
+        except Exception:
+            pass
+        try:
+            if return_page and not return_page.is_closed():
+                return_page.bring_to_front()
+        except Exception:
+            pass
         if playwright:
             try:
                 playwright.stop()
