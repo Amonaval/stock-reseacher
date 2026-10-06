@@ -10,7 +10,7 @@ __pycache__/
 Thumbs.db
 
 # Runtime/generated research outputs
-# Keep committed SAMPLE fixtures; ignore user-generated outputs.
+runs/
 data/*
 !data/*_SAMPLE.json
 !data/master_strategies_SAMPLE.json
