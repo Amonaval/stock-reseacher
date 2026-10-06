@@ -20,7 +20,25 @@ def _find_col(columns, names):
 def read_result_file(uploaded_file, strategy_id=None):
     raw = uploaded_file.getvalue()
     name = uploaded_file.name.lower()
-    if name.endswith((".xlsx", ".xls")):
+    hyperlink_by_row = {}
+    if name.endswith(".xlsx"):
+        df = pd.read_excel(io.BytesIO(raw))
+        # pandas drops cell hyperlinks. Preserve exact Screener company URLs in
+        # the fallback/debug importer rather than searching again by company name.
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(io.BytesIO(raw), read_only=False, data_only=True)
+            ws = wb.active
+            headers = [str(c.value or "").strip() for c in ws[1]]
+            company_idx = next((i for i,h in enumerate(headers,1) if h.casefold() in {"name","company","company name","stock","symbol"}), None)
+            if company_idx:
+                for excel_row in range(2, ws.max_row + 1):
+                    cell = ws.cell(excel_row, company_idx)
+                    if cell.hyperlink and cell.hyperlink.target:
+                        hyperlink_by_row[excel_row - 2] = str(cell.hyperlink.target)
+        except Exception:
+            hyperlink_by_row = {}
+    elif name.endswith(".xls"):
         df = pd.read_excel(io.BytesIO(raw))
     elif name.endswith(".csv"):
         df = pd.read_csv(io.BytesIO(raw))
@@ -29,7 +47,6 @@ def read_result_file(uploaded_file, strategy_id=None):
 
     company_col = _find_col(df.columns, ["name", "company", "company name", "stock", "symbol"])
     if company_col is None:
-        # Screener exports often put company name in the first text column.
         for c in df.columns:
             if df[c].dtype == object:
                 company_col = c
@@ -41,7 +58,7 @@ def read_result_file(uploaded_file, strategy_id=None):
     url_col = _find_col(df.columns, ["url", "company url", "link"])
 
     out = []
-    for _, row in df.iterrows():
+    for row_index, (_, row) in enumerate(df.iterrows()):
         company = str(row.get(company_col, "") or "").strip()
         if not company or company.lower() == "nan":
             continue
@@ -61,7 +78,7 @@ def read_result_file(uploaded_file, strategy_id=None):
             "company": company,
             "company_key": norm_company(company),
             "strategy_id": sid,
-            "url": str(row.get(url_col, "") or "").strip() if url_col else "",
+            "url": (str(row.get(url_col, "") or "").strip() if url_col else "") or hyperlink_by_row.get(row_index, ""),
             "source_file": uploaded_file.name,
             "snapshot": snapshot,
         })
@@ -74,13 +91,7 @@ def parse_pasted_companies(text, strategy_id):
         company = line.strip().strip(",")
         if not company:
             continue
-        rows.append({
-            "company": company,
-            "company_key": norm_company(company),
-            "strategy_id": strategy_id,
-            "url": "",
-            "source_file": "manual_paste",
-        })
+        rows.append({"company": company,"company_key": norm_company(company),"strategy_id": strategy_id,"url": "","source_file": "manual_paste"})
     return rows
 
 
@@ -89,19 +100,13 @@ def build_candidate_universe(rows, strategies):
     grouped = defaultdict(lambda: {"company": "", "urls": set(), "strategies": set(), "sources": set(), "snapshots": []})
     for row in rows:
         key = row.get("company_key") or norm_company(row.get("company"))
-        if not key:
-            continue
+        if not key: continue
         g = grouped[key]
-        if not g["company"]:
-            g["company"] = row.get("company", "")
-        if row.get("url"):
-            g["urls"].add(row["url"])
-        if row.get("strategy_id"):
-            g["strategies"].add(row["strategy_id"])
-        if row.get("source_file"):
-            g["sources"].add(row["source_file"])
-        if row.get("snapshot"):
-            g["snapshots"].append(row["snapshot"])
+        if not g["company"]: g["company"] = row.get("company", "")
+        if row.get("url"): g["urls"].add(row["url"])
+        if row.get("strategy_id"): g["strategies"].add(row["strategy_id"])
+        if row.get("source_file"): g["sources"].add(row["source_file"])
+        if row.get("snapshot"): g["snapshots"].append(row["snapshot"])
 
     result = []
     max_possible = max(1, len(strategy_map))
@@ -110,21 +115,12 @@ def build_candidate_universe(rows, strategies):
         confidence_sum = sum(strategy_map.get(sid, {}).get("evidence_confidence", 0) for sid in ids)
         average_conf = confidence_sum / max(1, len(ids))
         overlap = len(ids)
-        # Research-priority score: overlap matters most, then methodology evidence quality.
         priority = 100 * (0.70 * overlap / max_possible + 0.30 * average_conf / 100)
         result.append({
-            "company": g["company"],
-            "strategy_count": overlap,
-            "strategies": ", ".join(ids),
+            "company": g["company"],"strategy_count": overlap,"strategies": ", ".join(ids),
             "strategy_names": ", ".join(strategy_map.get(x, {}).get("name", x) for x in ids),
-            "methodology_confidence_avg": round(average_conf, 1),
-            "research_priority_score": round(priority, 1),
-            "url": sorted(g["urls"])[0] if g["urls"] else "",
-            "sources": ", ".join(sorted(g["sources"])),
-            # Keep one full Screener result snapshot as the immediate V3 data seed.
-            # If multiple strategy exports contain the same company, the first
-            # non-empty snapshot is sufficient because screen-result ratios are
-            # point-in-time values from the same research run.
+            "methodology_confidence_avg": round(average_conf, 1),"research_priority_score": round(priority, 1),
+            "url": sorted(g["urls"])[0] if g["urls"] else "","sources": ", ".join(sorted(g["sources"])),
             "snapshot": g["snapshots"][0] if g["snapshots"] else {},
         })
     result.sort(key=lambda x: (-x["strategy_count"], -x["research_priority_score"], x["company"].casefold()))
