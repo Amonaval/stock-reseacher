@@ -1,62 +1,116 @@
 # Personal AI Stock Researcher
 
-An experimental, evidence-driven research system for Indian equities.
+A personal, evidence-driven equity research operating system for Indian stocks.
 
-The goal is simple: **start with a broad stock universe, progressively narrow it using financial quality and research evidence, challenge the surviving ideas with independent bull/bear analysis, and eventually produce an explainable ranked portfolio proposal.**
+The goal is not to generate stock tips or another opaque score. The goal is to help an investor move from **screening ideas → understanding businesses → collecting evidence → challenging the thesis → valuation → conviction**, while preserving full control and a visible research trail.
 
-This is not intended to be a black-box stock tip generator. Every stage is designed to show **what survived, what was rejected or held, and why**.
+## Product thesis
 
-## What it does today
+The system should:
 
-The current baseline contains the work developed through **V6.1**:
+1. learn the investor's historical screening philosophy
+2. turn that philosophy into editable and reusable strategies
+3. execute screening automatically
+4. preserve exact company identity and strategy provenance
+5. collect multi-period financial data automatically
+6. explain financial decisions with evidence coverage and reasons
+7. autonomously acquire company research sources
+8. maintain a durable company research memory
+9. spend progressively more research effort on fewer companies
+10. build independent Bull and Bear cases
+11. expose contradictions, missing evidence and thesis fragility
+12. eventually add valuation, conviction, ranking and portfolio construction
 
-1. **Methodology Miner** — learns recurring patterns from historical Screener.in screens.
-2. **Strategy Intelligence** — derives master screening strategies with provenance back to the original methodology.
-3. **Candidate Universe** — combines results, deduplicates companies and keeps strategy-overlap context.
-4. **Autonomous V3 Financial Intelligence** — keeps ratios already present in screen exports and can enrich candidates with multi-period financial history from a logged-in Screener session.
-5. **Company Research Memory** — ingests/fetches annual reports, results, presentations, concalls, filings and rating reports into a source-linked evidence ledger.
-6. **Autonomous Source Acquisition & Orchestrator** — discovers and prioritizes research sources and decides what a company needs next.
-7. **Deep Research Funnel** — spends progressively more research effort on progressively fewer companies.
-8. **Bull/Bear Adversarial Research** — independently builds bullish and bearish cases, then challenges contradictions and thesis fragility.
+The system is **autonomous by default, but user-controlled at every important gate**.
 
-The final portfolio/valuation/conviction layers are still on the roadmap.
-
-## The intended user experience
-
-The long-term target is:
+## Current investor workflow
 
 ```text
-Start Autonomous Research
+Learn / load investing philosophy
         ↓
-Acquire stock universe + ratios
+Review / edit strategy profile
         ↓
-Run master strategies
+Run screening automatically
         ↓
-Candidate universe
+Review candidate universe
         ↓
-Financial intelligence
+Collect financial history
         ↓
-Autonomous filings/reports research
+Review financial decisions
         ↓
-Progressive deep research
+Research surviving companies
         ↓
-Bull/Bear challenge
+Allocate deeper research
         ↓
-Valuation + evidence confidence
+Bull / Bear challenge
         ↓
-Conviction + ranking
+[future] valuation
         ↓
-₹1,00,000 portfolio proposal
+[future] conviction + ranking
+        ↓
+[future] portfolio proposal
 ```
 
-Manual Excel/CSV upload remains available as a fallback and debugging route, but **the product direction is autonomous end-to-end research**.
+Manual CSV/XLSX imports remain available for recovery/debugging, but they are not the intended normal workflow.
+
+## Design constitution
+
+Every new feature should follow the product constitution:
+
+- evidence before opinion
+- autonomy without loss of user authority
+- missing information becomes a research task
+- no false precision
+- no hidden eliminations
+- distinguish methodology confidence, evidence quality, research readiness, valuation and conviction
+- challenge the thesis rather than only supporting it
+- keep provider-specific code behind adapters
+- optimize for investor workflow, not engineering workflow
+
+See [docs/PRODUCT_CONSTITUTION.md](docs/PRODUCT_CONSTITUTION.md).
+
+## Current strengths
+
+- historical screen/methodology mining
+- methodology-derived master strategies
+- editable/exportable/importable strategy profiles
+- autonomous logged-in Screener query execution
+- exact company-link capture
+- candidate review and user pruning
+- multi-period financial enrichment
+- coverage-aware financial decisions
+- operator overrides
+- configurable Screener pacing/rate-limit delay
+- company research/source infrastructure
+- evidence ledger/research memory foundations
+- progressive research-depth planning
+- Bull/Bear adversarial research foundations
+
+## Current incomplete area
+
+The major remaining research milestone is **Company Research Engine + Evidence Acquisition Completion**.
+
+The infrastructure exists, but the investor-facing contract is not yet complete until company research consistently shows:
+
+- sources attempted and acquired
+- documents reviewed
+- business-model summary
+- growth drivers
+- management/capital-allocation observations
+- risks/governance concerns
+- catalysts
+- source-linked evidence
+- unresolved questions
+- explicit `SOURCE_GAP` when evidence could not be acquired
+
+Deep research and Bull/Bear become meaningful only after this layer is reliable.
 
 ## Quick start
 
 ### Prerequisites
 
 - Python 3.11+ recommended
-- Chrome/Chromium if using logged-in Screener automation
+- Chrome/Chromium for logged-in Screener automation
 
 ### Windows
 
@@ -86,25 +140,27 @@ streamlit run app/main.py
 
 ## Screener browser connection
 
-To let the app use an existing logged-in Screener session, launch a separate Chrome profile with remote debugging enabled.
+Screener is the current POC provider adapter. The long-term architecture is designed to support NSE/BSE and other legitimate data providers.
 
-Windows example:
+Launch a separate Chrome profile with remote debugging:
 
 ```bat
 chrome.exe --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\screener-crawler-profile"
 ```
 
-Then log in to Screener.in in that browser. The app defaults to:
+Log in to Screener in that browser. The app defaults to:
 
 ```text
 http://127.0.0.1:9222
 ```
 
-Do not put Screener credentials in this project.
+The automation uses dedicated worker tabs rather than navigating your Streamlit tab.
+
+The Screener request delay is configurable in **Runtime Settings**; the default is deliberately conservative.
 
 ## Optional AI / web research configuration
 
-Copy `.env.example` to your preferred environment-loading mechanism and configure only what you use:
+Configure only the providers you use:
 
 ```text
 LLM_BASE_URL=https://api.openai.com/v1
@@ -114,44 +170,47 @@ BRAVE_SEARCH_API_KEY=...
 ENABLE_LOCAL_CRAWLER=false
 ```
 
-The research pipeline has deterministic fallbacks where possible. Semantic evidence extraction and adversarial thesis construction are much stronger with an LLM configured.
-
-## PDF / `fitz` issue
-
-PDF extraction uses **PyMuPDF**. The code now imports the supported module name `pymupdf` first and falls back to legacy `fitz` for compatibility.
-
-If PDF support is missing:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-or specifically:
-
-```bash
-python -m pip install "PyMuPDF>=1.24,<2"
-```
-
-See [docs/SETUP_AND_TROUBLESHOOTING.md](docs/SETUP_AND_TROUBLESHOOTING.md).
+LLM-assisted research must remain evidence-bound. Missing evidence should produce an explicit gap, not a fabricated answer.
 
 ## Documentation
 
+### Product principles
+- [Product Constitution](docs/PRODUCT_CONSTITUTION.md)
+- [Investor Outlook](docs/INVESTOR_OUTLOOK.md)
+- [Fundamental Research Analyst Playbook](docs/FUNDAMENTAL_RESEARCH_ANALYST_PLAYBOOK.md)
+- [Differentiation and Competitive Map](docs/DIFFERENTIATION_AND_COMPETITIVE_MAP.md)
+- [Research Stage Contracts](docs/RESEARCH_STAGE_CONTRACTS.md)
+- [Operator Control](docs/OPERATOR_CONTROL.md)
+
+### Product / engineering
 - [What this is — for stock investors](docs/OVERVIEW_FOR_INVESTORS.md)
 - [How the research pipeline works](docs/HOW_IT_WORKS.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Consolidated Workflow](docs/CONSOLIDATED_WORKFLOW.md)
 - [Current status](docs/CURRENT_STATUS.md)
 - [Autonomy and data sources](docs/AUTONOMY_AND_DATA_SOURCES.md)
 - [Setup and troubleshooting](docs/SETUP_AND_TROUBLESHOOTING.md)
+- [Static validation](docs/STATIC_VALIDATION.md)
 - [Roadmap](ROADMAP.md)
+
+## Research-stage completion rule
+
+A stage is not complete because code ran without throwing an exception.
+
+Every major stage must answer:
+
+1. What did the system do?
+2. What did it learn?
+3. What evidence supports that?
+4. What is still unknown?
+5. What happens next?
+
+The app now includes `app/research_contracts.py` as the beginning of enforceable investor-facing completion contracts.
 
 ## Important limitations
 
-- This project is **research software**, not a SEBI-registered advisory service.
-- A high research score or strategy overlap is not the same as expected return.
-- Automated web/source access should respect site terms, robots policies, rate limits and applicable law.
-- Screener automation is a convenience adapter, not intended to be the system's permanent single data dependency.
-- The system is still under active development and has not yet implemented the final valuation/conviction/portfolio layers.
-
-## Current milestone
-
-**V6.1 baseline committed:** autonomous financial enrichment is connected to the accumulated V1→V6 research pipeline. The next major integration goal is to remove the remaining need for manually executing Screener master queries by adding an autonomous market-data/screening gateway.
+- This is research software, not a SEBI-registered advisory service.
+- Strategy overlap, financial scores, research readiness and Bull/Bear outputs are not expected-return probabilities.
+- Web/source access must respect site terms, access controls, rate limits and applicable law.
+- Screener is a POC adapter, not a permanent master-data dependency.
+- Final valuation, conviction, ranking and portfolio-construction layers are still future work.
