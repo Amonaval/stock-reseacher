@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 import time
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright
 
 from crawler import discover_candidates, crawl_selected_urls
+from runtime_settings import get_screener_delay
 
 
 SCREENER = "https://www.screener.in"
@@ -33,11 +34,7 @@ def _is_app_page(page) -> bool:
         url = (page.url or "").lower()
     except Exception:
         return False
-    return (
-        "localhost:8501" in url
-        or "127.0.0.1:8501" in url
-        or "streamlit" in url
-    )
+    return "localhost:8501" in url or "127.0.0.1:8501" in url or "streamlit" in url
 
 
 class ScreenerAdapter:
@@ -47,20 +44,19 @@ class ScreenerAdapter:
     - NEVER navigate an existing user/application tab.
     - Every automation session gets a dedicated worker tab.
     - The worker tab is closed on success/error.
+    - Requests are throttled by the operator-configured delay.
     - The Streamlit/application tab is brought back to the front when possible.
-
-    Screener-specific behavior is isolated here so NSE/BSE/provider adapters can
-    replace it later without changing the research engines.
     """
 
-    def __init__(self, cdp_url: str = "http://127.0.0.1:9222", delay: float = 0.35):
+    def __init__(self, cdp_url: str = "http://127.0.0.1:9222", delay: float | None = None):
         self.cdp_url = cdp_url
-        self.delay = delay
+        self.delay = get_screener_delay() if delay is None else max(0.0, float(delay))
         self._pw = None
         self.browser = None
         self.context = None
         self.page = None
         self.return_page = None
+        self._last_request_at = 0.0
 
     def __enter__(self):
         self._pw = sync_playwright().start()
@@ -78,8 +74,6 @@ class ScreenerAdapter:
                 (p for p in existing if "screener.in" not in (p.url or "").lower() and (p.url or "") != "about:blank"),
                 None,
             )
-
-        # Critical UX rule: never reuse context.pages[0]. It may be the Streamlit app.
         self.page = self.context.new_page()
         self.page.set_default_timeout(10000)
         self.page.set_default_navigation_timeout(30000)
@@ -102,13 +96,22 @@ class ScreenerAdapter:
             except Exception:
                 pass
 
+    def _throttle(self):
+        if self.delay <= 0:
+            return
+        elapsed = time.monotonic() - self._last_request_at
+        remaining = self.delay - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
+        self._last_request_at = time.monotonic()
+
     def _goto(self, url: str, timeout: int = 30000):
-        """Bounded navigation; don't leave the UI hanging on a network-idle wait."""
+        self._throttle()
         response = self.page.goto(url, wait_until="commit", timeout=timeout)
+        self._last_request_at = time.monotonic()
         try:
             self.page.wait_for_load_state("domcontentloaded", timeout=min(timeout, 10000))
         except Exception:
-            # DOM may already be useful even when third-party assets keep loading.
             pass
         return response
 
@@ -124,32 +127,32 @@ class ScreenerAdapter:
             )
         except Exception:
             hrefs = ""
-        logged_in = (
-            "logout" in body.casefold()
-            or "sign out" in body.casefold()
-            or "/account/" in hrefs
-        )
+        logged_in = "logout" in body.casefold() or "sign out" in body.casefold() or "/account/" in hrefs
         return {
             "connected": True,
             "logged_in": bool(logged_in),
             "url": self.page.url,
             "worker_tab": True,
+            "delay_seconds": self.delay,
         }
 
     @staticmethod
-    def discover_screens(cdp_url, explore_url="https://www.screener.in/explore/", max_pages=15, max_screens=0, progress=None):
-        return discover_candidates(cdp_url, explore_url, max_pages=max_pages, max_screens=max_screens, progress=progress)
+    def discover_screens(cdp_url, explore_url="https://www.screener.in/explore/", max_pages=15, max_screens=0, progress=None, delay=None):
+        return discover_candidates(
+            cdp_url, explore_url, max_pages=max_pages, max_screens=max_screens,
+            progress=progress, delay=get_screener_delay() if delay is None else delay,
+        )
 
     @staticmethod
-    def fetch_screen_queries(cdp_url, urls, progress=None):
-        return crawl_selected_urls(cdp_url, urls, progress=progress)
+    def fetch_screen_queries(cdp_url, urls, progress=None, delay=None):
+        return crawl_selected_urls(
+            cdp_url, urls, progress=progress,
+            delay=get_screener_delay() if delay is None else delay,
+        )
 
     def _query_input(self):
         selectors = [
-            "textarea[name='query']",
-            "textarea[name*=query i]",
-            "textarea",
-            "input[name*=query i]",
+            "textarea[name='query']", "textarea[name*=query i]", "textarea", "input[name*=query i]"
         ]
         for selector in selectors:
             loc = self.page.locator(selector)
@@ -163,23 +166,22 @@ class ScreenerAdapter:
         return None
 
     def _submit_query(self):
+        self._throttle()
         for selector in [
-            "button:has-text('Run this Query')",
-            "button:has-text('Run Query')",
-            "input[type=submit]",
-            "button[type=submit]",
+            "button:has-text('Run this Query')", "button:has-text('Run Query')",
+            "input[type=submit]", "button[type=submit]",
         ]:
             loc = self.page.locator(selector)
             if loc.count():
                 try:
                     loc.first.click(timeout=3000)
+                    self._last_request_at = time.monotonic()
                     return True
                 except Exception:
                     pass
         return False
 
     def _wait_for_result_table(self, timeout_ms: int = 20000):
-        """Wait for what we actually need instead of waiting for the whole page lifecycle."""
         deadline = time.time() + timeout_ms / 1000
         last_url = self.page.url
         while time.time() < deadline:
@@ -209,12 +211,12 @@ class ScreenerAdapter:
             raise RuntimeError("Could not find Screener query editor on /screen/new/. UI may have changed.")
         inp.fill(query)
         if not self._submit_query():
+            self._throttle()
             try:
                 inp.press("Control+Enter")
+                self._last_request_at = time.monotonic()
             except Exception as exc:
                 raise RuntimeError("Could not submit Screener query.") from exc
-
-        # Do not wait for a full page load. The visible result table is our completion contract.
         self._wait_for_result_table(timeout_ms=20000)
         return {"url": self.page.url, "title": self.page.title()}
 
@@ -241,7 +243,6 @@ class ScreenerAdapter:
         if not headers:
             headers = [_clean(x) for x in table.locator("tr").first.locator("th,td").all_inner_texts()]
             rows = table.locator("tr")
-
         out = []
         for i in range(rows.count()):
             tr = rows.nth(i)
@@ -295,7 +296,6 @@ class ScreenerAdapter:
                 break
             self._goto(nxt, timeout=30000)
             self._wait_for_result_table(timeout_ms=15000)
-            time.sleep(self.delay)
         return all_rows
 
     def discover_company_documents(self, company_url: str, company: str = "") -> list[dict]:
