@@ -43,9 +43,12 @@ class CompanyResearch:
     screen_snapshots: list[dict[str, Any]] = field(default_factory=list)
     financial_history: list[dict[str, Any]] = field(default_factory=list)
     financial_assessment: dict[str, Any] = field(default_factory=dict)
+    source_attempts: list[dict[str, Any]] = field(default_factory=list)
     documents: list[dict[str, Any]] = field(default_factory=list)
     evidence: list[dict[str, Any]] = field(default_factory=list)
     research_questions: list[dict[str, Any]] = field(default_factory=list)
+    research_state: str = "NOT_RESEARCHED"
+    research_dossier: dict[str, Any] = field(default_factory=dict)
     bull_case: dict[str, Any] = field(default_factory=dict)
     bear_case: dict[str, Any] = field(default_factory=dict)
     contradiction_review: dict[str, Any] = field(default_factory=dict)
@@ -92,7 +95,13 @@ class ResearchRun:
             selected_screens=data.get("selected_screens", []), strategies=data.get("strategies", []), stage_summary=data.get("stage_summary", {}),
         )
         obj.events = [ResearchEvent(**x) for x in data.get("events", [])]
-        obj.companies = {k: CompanyResearch(**v) for k, v in data.get("companies", {}).items()}
+        obj.companies = {}
+        allowed = set(CompanyResearch.__dataclass_fields__)
+        for key, value in data.get("companies", {}).items():
+            # Backward-compatible with research_run.json files produced before
+            # source_attempts/research_state/research_dossier were introduced.
+            clean = {k: v for k, v in value.items() if k in allowed}
+            obj.companies[key] = CompanyResearch(**clean)
         return obj
 
     def save(self, root: Path) -> Path:
