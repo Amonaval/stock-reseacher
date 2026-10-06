@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import pandas as pd
 import streamlit as st
 
@@ -10,6 +11,12 @@ from strategy_profiles import (
     import_strategy_profile,
     update_strategy_from_editor,
 )
+from screener_adapter import ScreenerAdapter
+from research_service import ResearchService
+
+ROOT = Path(__file__).resolve().parents[2]
+RUNS = ROOT / "runs"
+RUNS.mkdir(exist_ok=True)
 
 st.set_page_config(page_title="Operator Control · Personal AI Stock Researcher", layout="wide")
 st.title("Operator Control")
@@ -92,6 +99,26 @@ if strategies:
         mime="application/json",
     )
 
+    st.markdown("### Preview before a full screening run")
+    preview_choices = {s.get("id"): f"{s.get('id')} · {s.get('name')}" for s in (st.session_state.get("strategies") or strategies)}
+    p1, p2 = st.columns([1, 2])
+    preview_id = p1.selectbox("Strategy to preview", list(preview_choices), format_func=lambda x: preview_choices[x])
+    preview_cdp = p2.text_input("Logged-in Chrome CDP", "http://127.0.0.1:9222", key="operator_cdp")
+    if st.button("Preview strategy result size"):
+        selected = next(s for s in (st.session_state.get("strategies") or strategies) if s.get("id") == preview_id)
+        try:
+            with ScreenerAdapter(preview_cdp) as adapter:
+                adapter.run_query(selected.get("hard_query", ""))
+                first_page = adapter.parse_current_result_page(preview_id)
+                has_more = bool(adapter._next_href())
+            if has_more:
+                st.warning(f"Preview captured {len(first_page)} rows on the first page and more pages exist. The strategy is broader than {len(first_page)} results.")
+            else:
+                st.success(f"Preview found {len(first_page)} result rows.")
+            st.caption("Preview does not alter the candidate universe. Tune the query above, apply edits, then preview again.")
+        except Exception as exc:
+            st.error(f"Preview failed: {exc}")
+
     with st.expander("Compare tuned vs generated philosophy"):
         for s in st.session_state.get("strategies") or strategies:
             st.markdown(f"### {s.get('id')} · {s.get('name')}")
@@ -108,10 +135,11 @@ universe = st.session_state.get("candidate_universe") or []
 if not universe:
     st.info("Run screening first. When results exist, you can prune the 200–1000 candidates here before financial collection.")
 else:
-    all_universe = st.session_state.get("candidate_universe_all") or universe
-    if "candidate_universe_all" not in st.session_state:
+    current_run_id = getattr(run, "run_id", "no-run") if run else "no-run"
+    if st.session_state.get("candidate_universe_all_run_id") != current_run_id:
         st.session_state.candidate_universe_all = list(universe)
-    all_universe = st.session_state.candidate_universe_all
+        st.session_state.candidate_universe_all_run_id = current_run_id
+    all_universe = st.session_state.get("candidate_universe_all") or universe
 
     max_overlap = max([int(x.get("strategy_count") or 0) for x in all_universe] + [1])
     c1, c2 = st.columns(2)
@@ -155,13 +183,12 @@ if not assessments or run is None:
     st.info("Run financial analysis first. Then you can accept or override which companies receive expensive company research.")
 else:
     rows = []
-    system_default = set()
     for x in assessments:
         proposed = x.get("system_decision", x.get("decision"))
-        if proposed in {"ADVANCE", "WATCHLIST"}:
-            system_default.add(x.get("company"))
+        existing = x.get("user_selected_for_research")
+        default_research = bool(existing) if existing is not None else proposed in {"ADVANCE", "WATCHLIST"}
         rows.append({
-            "Research?": x.get("company") in system_default,
+            "Research?": default_research,
             "Company": x.get("company"),
             "System proposal": proposed,
             "Evidence coverage %": x.get("data_confidence"),
@@ -179,7 +206,25 @@ else:
         st.success(f"Company research will use {len(selected)} companies. Original system proposals remain preserved.")
 
 st.divider()
-st.markdown("## 4. Deep-research & Bull/Bear control")
+st.markdown("## 4. Deep-research budget & Bull/Bear control")
+memories = st.session_state.get("research_memories") or []
+if memories and run is not None:
+    st.write("Tune how much research effort the system may spend at each depth. These are capacity budgets, not investment thresholds.")
+    b1, b2, b3, b4 = st.columns(4)
+    structured = b1.number_input("Structured", min_value=1, max_value=max(1, len(memories)), value=min(100, max(1, len(memories))))
+    targeted = b2.number_input("Targeted", min_value=1, max_value=max(1, len(memories)), value=min(50, max(1, len(memories))))
+    deep = b3.number_input("Deep", min_value=1, max_value=max(1, len(memories)), value=min(25, max(1, len(memories))))
+    adversarial = b4.number_input("Bull/Bear", min_value=1, max_value=max(1, len(memories)), value=min(15, max(1, len(memories))))
+    if st.button("Replan research depth with these budgets"):
+        budgets = {
+            "STRUCTURED": int(structured),
+            "TARGETED": int(min(targeted, structured)),
+            "DEEP": int(min(deep, targeted, structured)),
+            "ADVERSARIAL": int(min(adversarial, deep, targeted, structured)),
+        }
+        st.session_state.research_plan = ResearchService(run, RUNS).plan_deep_research(memories, budgets)
+        st.success(f"Replanned: {st.session_state.research_plan.get('counts', {})}")
+
 plan = st.session_state.get("research_plan") or {}
 if not plan:
     st.info("Create the progressive research plan first. Its budgets should be treated as defaults, not immutable decisions.")
