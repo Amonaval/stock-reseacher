@@ -42,6 +42,7 @@ def assess_company(row: dict) -> dict:
     return {
         **score,
         "decision": decision,
+        "funnel_decision": decision,
         "decision_reason": reason,
         "hard_exclusions": hard,
         "warnings": warnings,
