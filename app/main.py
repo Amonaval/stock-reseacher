@@ -29,6 +29,8 @@ DEFAULTS = {
     "connection": None,
     "financial_assessments": [],
     "research_memories": [],
+    "research_plan": {},
+    "adversarial_results": [],
 }
 for k, v in DEFAULTS.items():
     st.session_state.setdefault(k, v)
@@ -72,6 +74,8 @@ with T_RESEARCH:
         st.session_state.manual_candidate_rows = []
         st.session_state.financial_assessments = []
         st.session_state.research_memories = []
+        st.session_state.research_plan = {}
+        st.session_state.adversarial_results = []
         st.success(f"Created {st.session_state.run.run_id}")
     if b.button("Check Screener connection"):
         try:
@@ -197,6 +201,31 @@ with T_RESEARCH:
             except Exception as exc:
                 st.error(str(exc)); run.log("RESEARCH","RESEARCH_STAGE_FAILED",str(exc),status="ERROR")
 
+    st.markdown("### 5. Allocate deeper research")
+    if st.session_state.research_memories:
+        st.caption("This stage allocates research effort, not investment conviction. Evidence gates and research-capacity budgets decide what deserves deeper work.")
+        if st.button("Plan progressive deep research"):
+            try:
+                budgets={"STRUCTURED":100,"TARGETED":50,"DEEP":25,"ADVERSARIAL":15} if depth=="Deep" else {"STRUCTURED":60,"TARGETED":30,"DEEP":15,"ADVERSARIAL":8}
+                st.session_state.research_plan=ResearchService(run,RUNS).plan_deep_research(st.session_state.research_memories,budgets)
+                st.success(f"Research-depth plan ready: {st.session_state.research_plan.get('counts',{})}")
+            except Exception as exc:
+                st.error(str(exc)); run.log("RESEARCH_DEPTH","PLANNING_FAILED",str(exc),status="ERROR")
+
+    st.markdown("### 6. Challenge the strongest researched theses")
+    if st.session_state.research_plan:
+        ready=sum(1 for x in st.session_state.research_plan.get("rows",[]) if x.get("stage")=="ADVERSARIAL")
+        st.caption(f"{ready} companies currently have enough evidence for independent Bull/Bear challenge. This produces research states, not buy/sell calls.")
+        if st.button("Run Bull/Bear challenge"):
+            bar=st.progress(0); message=st.empty()
+            try:
+                def aprogress(i,n,company):
+                    bar.progress(i/max(n,1)); message.write(f"{i}/{n} challenging {company}")
+                st.session_state.adversarial_results=ResearchService(run,RUNS).run_adversarial_research(st.session_state.research_memories,st.session_state.research_plan,aprogress)
+                st.success(f"Bull/Bear challenge complete for {len(st.session_state.adversarial_results)} companies.")
+            except Exception as exc:
+                st.error(str(exc)); run.log("ADVERSARIAL","ADVERSARIAL_FAILED",str(exc),status="ERROR")
+
     st.markdown("### Research log")
     if run.events:
         st.dataframe(event_df(run), use_container_width=True, hide_index=True)
@@ -231,6 +260,12 @@ with T_COMPANIES:
             st.markdown("### Financial research decisions")
             st.dataframe(fdf,use_container_width=True,hide_index=True)
             st.caption("Numeric scores are internal ordering aids. The user-facing decision is driven by evidence coverage, hard risk gates, qualitative dimensions and an explicit reason.")
+        if st.session_state.research_plan:
+            st.markdown("### Research-depth funnel")
+            pdf=pd.DataFrame(st.session_state.research_plan.get("rows",[]))
+            show=[c for c in ["company","stage","reason","documents","document_coverage","evidence_quality","research_readiness","risk_items"] if c in pdf.columns]
+            st.dataframe(pdf[show],use_container_width=True,hide_index=True)
+
         rows = []
         for x in universe:
             rows.append({
@@ -247,6 +282,45 @@ with T_COMPANIES:
             st.markdown("**Metrics captured directly from the screen result**")
             st.dataframe(pd.DataFrame([item["snapshot"]]), use_container_width=True, hide_index=True)
 
+        cr=active_run().companies.get(chosen.strip().casefold())
+        if cr:
+            st.markdown("### Company research dossier")
+            if cr.financial_assessment:
+                fa=cr.financial_assessment
+                st.write(f"**Financial decision:** {fa.get('decision')} — {fa.get('decision_reason','')}")
+                st.write(f"**Financial evidence coverage:** {fa.get('data_confidence',0)}%")
+                labels=fa.get('labels',{})
+                if labels: st.dataframe(pd.DataFrame([labels]),use_container_width=True,hide_index=True)
+                if fa.get('warnings'): st.warning("; ".join(fa.get('warnings',[])))
+            st.write(f"**Research documents collected:** {len(cr.documents)}")
+            st.write(f"**Evidence items extracted:** {len(cr.evidence)}")
+            if cr.research_questions:
+                st.markdown("**Open research questions / missing evidence**")
+                for q in cr.research_questions: st.write(f"- {q.get('question')} — {q.get('reason')}")
+            if cr.evidence:
+                st.markdown("**What the research found**")
+                edf=pd.DataFrame([{
+                    "Theme":e.get('theme'),"Type":e.get('kind'),"Finding":e.get('claim') or e.get('excerpt'),
+                    "Document":e.get('document_title'),"Page":e.get('page'),"Evidence ID":e.get('evidence_id')
+                } for e in cr.evidence[:100]])
+                st.dataframe(edf,use_container_width=True,hide_index=True)
+            if cr.bull_case or cr.bear_case:
+                c1,c2=st.columns(2)
+                with c1:
+                    st.markdown("#### Bull case")
+                    st.write(cr.bull_case.get('summary',''))
+                    for p in cr.bull_case.get('points',[]): st.write(f"- {p.get('point')}")
+                with c2:
+                    st.markdown("#### Bear / forensic case")
+                    st.write(cr.bear_case.get('summary',''))
+                    for p in cr.bear_case.get('points',[]): st.write(f"- {p.get('point')}")
+            if cr.contradiction_review:
+                st.markdown("#### Neutral challenge")
+                st.write(cr.contradiction_review.get('challenge_summary',''))
+            if cr.decisions:
+                st.markdown("**Decision history**")
+                st.dataframe(pd.DataFrame(cr.decisions),use_container_width=True,hide_index=True)
+
 with T_SETTINGS:
     st.subheader("Settings / Debug")
     st.write("Normal operation should not require files. These controls exist for recovery/testing.")
@@ -260,4 +334,4 @@ with T_SETTINGS:
         strategies = st.session_state.strategies or [{"id": sid, "name": "Imported", "evidence_confidence": 50}]
         st.session_state.candidate_universe = build_candidate_universe(st.session_state.manual_candidate_rows, strategies)
         st.success(f"Built {len(st.session_state.candidate_universe)} unique candidates.")
-    st.caption("Debug imports preserve Excel cell hyperlinks when present; normal live-Screener runs capture exact hrefs directly from the result table.")
+    st.caption("Debug XLSX imports preserve company-cell hyperlinks when present; normal live-Screener runs capture exact hrefs directly from the result table.")
