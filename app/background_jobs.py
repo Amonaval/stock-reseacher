@@ -80,7 +80,10 @@ def start_job(job_type: str, payload: dict, *, label: str = "") -> dict:
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     else:
         kwargs["start_new_session"] = True
-    proc = subprocess.Popen([sys.executable, str(worker), job_id], **kwargs)
+    try:
+        proc = subprocess.Popen([sys.executable, str(worker), job_id], **kwargs)
+    finally:
+        log.close()
     update_job(job_id, pid=proc.pid)
     return read_job(job_id) or job
 
