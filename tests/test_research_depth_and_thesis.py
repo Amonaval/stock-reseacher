@@ -1,6 +1,12 @@
-from app.research_depth_planner import plan_research_depth
-from app.research_models import ResearchRun
-from app.research_analysis_orchestrator import build_research_memories
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "app"))
+
+from research_depth_planner import plan_research_depth
+from research_models import ResearchRun
+from research_analysis_orchestrator import build_research_memories
 
 
 def test_source_gap_does_not_reach_adversarial():
