@@ -24,9 +24,11 @@ You do not need to understand internal version names, JSON objects, research eng
 Research Confidence
         ↓
 Valuation Intelligence
+        ↓
+Conviction & Decision Synthesis
 ```
 
-The home page always shows a **Next recommended action** so you know what to do next.
+The home page always shows a **Next recommended action** through the six-step research flow. The specialist workspaces then take the strongest researched cases through quality control, valuation and synthesis.
 
 ---
 
@@ -136,7 +138,7 @@ The output is Bear / Base / Bull **scenario valuation**, not a target price.
 
 The app shows:
 
-- captured current price;
+- captured market price from the financial-research run;
 - Bear / Base / Bull fair-value scenarios;
 - upside/downside vs the captured price;
 - valuation family and method;
@@ -146,7 +148,61 @@ The app shows:
 - warnings and limitations;
 - what factors would change the valuation.
 
-The current price used by v1 is the value captured during the run's financial-research stage. It is **not live-refreshed** inside Valuation Intelligence.
+The price used by v1 is **not live-refreshed** inside Valuation Intelligence.
+
+---
+
+## Conviction & Decision Synthesis
+
+Use **Conviction & Decision Synthesis** after the upstream research, thesis challenge and valuation work are meaningful.
+
+It combines four separate dimensions instead of hiding them inside one master score:
+
+1. **Research quality** — how trustworthy is the evidence foundation?
+2. **Financial quality** — what did the financial gate conclude, including any explicit user override?
+3. **Thesis challenge** — did Bull survive, Bear dominate, or remain contested/fragile?
+4. **Valuation posture** — where is the captured price relative to the Bear/Base/Bull scenarios?
+
+Typical system states include:
+
+- `HIGH_PRIORITY_RESEARCH_CANDIDATE`
+- `POSITIVE_THESIS_NEAR_BASE_VALUE`
+- `POSITIVE_THESIS_VALUATION_STRETCHED`
+- `CONTESTED_RESEARCH_CASE`
+- `FRAGILE_RESEARCH_CASE`
+- `RISK_DOMINATED_RESEARCH_CASE`
+- `FINANCIAL_QUALITY_CONFLICT`
+- `MORE_RESEARCH_NEEDED`
+- `THESIS_CHALLENGE_PENDING`
+- `VALUATION_CONTEXT_INCOMPLETE`
+
+These are research states, **not BUY/SELL/HOLD instructions**.
+
+The workspace also exposes:
+
+- why the state was produced;
+- blockers;
+- unresolved questions;
+- what must be true for the Bull case;
+- invalidation conditions;
+- what could strengthen the case;
+- what could weaken the case.
+
+### Your Investor Review
+
+Your own judgement stays separate from the system synthesis.
+
+Optional stances include:
+
+- `AGREE_WITH_SYSTEM`
+- `NEED_MORE_RESEARCH`
+- `WATCH_CLOSELY`
+- `PASS_FOR_NOW`
+- `HIGH_INTEREST`
+
+You can also store your own current `LOW / MEDIUM / HIGH` conviction and notes.
+
+That is **your judgement**, not a system-generated probability or recommendation.
 
 ---
 
@@ -172,6 +228,9 @@ Evidence-quality control before valuation.
 
 ### Valuation Intelligence
 Business-model-aware Bear / Base / Bull valuation scenarios.
+
+### Conviction & Decision Synthesis
+Explainable synthesis of research quality, financial quality, thesis challenge and valuation context, plus a separate optional Investor Review.
 
 ### Operator Control
 Optional strategy/candidate/override controls.
@@ -200,6 +259,8 @@ Technical settings such as Screener request delay.
 - `READY_FOR_VALUATION_CONTEXT` — evidence foundation is strong enough for valuation analysis.
 - `VALUED` — the selected valuation framework had enough inputs to produce scenarios.
 - `BLOCKED` — valuation is intentionally withheld because the research gate, data or valuation family is insufficient.
+- `HIGH_PRIORITY_RESEARCH_CANDIDATE` — the completed research case deserves attention under the current contract; not BUY.
+- `READY_FOR_INVESTOR_REVIEW` — the implemented upstream stages are complete enough for your review; not an instruction to invest.
 
 ---
 
@@ -208,15 +269,19 @@ Technical settings such as Screener request delay.
 Prefer this chain:
 
 ```text
-Decision
+Decision state
 → Why
 → Evidence
 → Assumptions
+→ Bull/Bear conflict
+→ Valuation context
+→ What must be true
+→ Invalidation conditions
 → Missing information
-→ Next action
+→ Your review
 ```
 
-Do not over-focus on numeric scores or a single fair-value number.
+Do not over-focus on numeric scores, a single fair-value number or a single synthesis label.
 
 ---
 
@@ -230,6 +295,8 @@ Do not over-focus on numeric scores or a single fair-value number.
 6. inspect Research Confidence;
 7. run Valuation Intelligence for 2–3 research-ready companies;
 8. challenge the selected valuation family, normalized earnings, benchmark anchors and Bear/Base/Bull assumptions;
-9. compare the app's reasoning with your own judgement—not just the resulting number.
+9. run Conviction & Decision Synthesis;
+10. verify that Bear-dominated, fragile and contested cases are not hidden by favorable valuation scenarios;
+11. record your own Investor Review separately and compare it with the system synthesis.
 
-Conviction, final ranking and portfolio construction should only be built after this valuation behavior proves useful on real companies.
+Ranking, portfolio construction and monitoring should only be built after this full research-to-decision workflow proves useful on real companies.
