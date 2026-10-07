@@ -25,6 +25,7 @@ st.caption("Translate evidence-backed research into explicit Bear / Base / Bull 
 st.info(
     "Research confidence and investment attractiveness are separate. A company can have HIGH research confidence and still look expensive, fragile or unattractive."
 )
+st.caption("Price comparisons use the market price captured during the run's financial-research stage. Valuation Intelligence v1 does not live-refresh quotes.")
 
 run = st.session_state.get("run")
 if run is None:
@@ -70,11 +71,11 @@ if results:
             "Research confidence": (r.get("research_gate") or {}).get("state"),
             "Family": (r.get("valuation_family") or {}).get("label"),
             "Method": r.get("method") or "—",
-            "Current price": r.get("current_price"),
+            "Captured price": r.get("current_price"),
             "Bear value": (scenarios.get("bear") or {}).get("fair_value"),
             "Base value": (scenarios.get("base") or {}).get("fair_value"),
             "Bull value": (scenarios.get("bull") or {}).get("fair_value"),
-            "Base upside/downside %": (scenarios.get("base") or {}).get("upside_downside_pct"),
+            "Base vs captured price %": (scenarios.get("base") or {}).get("upside_downside_pct"),
         })
     st.dataframe(pd.DataFrame(overview), use_container_width=True, hide_index=True)
 else:
@@ -95,7 +96,7 @@ existing = company.valuation or {}
 x1, x2, x3, x4 = st.columns(4)
 x1.metric("Research confidence", confidence.get("research_confidence_state", "NOT ASSESSED"))
 x2.metric("Confidence score", confidence.get("research_confidence_score", "—"))
-x3.metric("Current price", (company.financial_assessment or {}).get("price") or "—")
+x3.metric("Captured price", (company.financial_assessment or {}).get("price") or "—")
 x4.metric("Auto family", auto_family.get("label"))
 
 st.write("**Why this valuation family:**", auto_family.get("reason"))
@@ -193,7 +194,7 @@ if result:
             col.metric("Fair-value scenario", f"₹{scenario.get('fair_value', 0):,.2f}")
             delta = scenario.get("upside_downside_pct")
             if delta is not None:
-                col.metric("Vs current price", f"{delta:+.1f}%")
+                col.metric("Vs captured price", f"{delta:+.1f}%")
             if scenario.get("multiple") is not None:
                 col.caption(f"P/E assumption: {scenario.get('multiple')}×")
             if scenario.get("fair_pb") is not None:
