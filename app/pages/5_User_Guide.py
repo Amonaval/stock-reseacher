@@ -15,7 +15,8 @@ st.info("**If this is your first run:** stay on **Guided Research** and follow t
 st.markdown("## The product in one sentence")
 st.write(
     "The app learns or uses your stock-screening philosophy, finds candidates, verifies their financials, "
-    "collects source evidence, resolves important evidence gaps, and then deliberately argues both sides of the strongest researched theses."
+    "collects source evidence, resolves important evidence gaps, deliberately argues both sides of the strongest researched theses, "
+    "and then checks whether the research itself is strong enough to support later valuation work."
 )
 
 st.markdown("## The normal six-step journey")
@@ -30,6 +31,15 @@ steps = [
 for n, title, text in steps:
     st.markdown(f"### {n}. {title}")
     st.write(text)
+
+st.markdown("## After the six steps: Research Confidence")
+st.write(
+    "Open **Research Confidence** when you want to judge whether the dossier itself is trustworthy enough to support the next analytical layer. "
+    "It checks source authority, source freshness, traceability, analyst-mission coverage, cross-source triangulation, downside evidence, contradiction handling and financial-data coverage."
+)
+st.warning(
+    "Research confidence is **not investment conviction**. A bearish thesis can have high research confidence, while a very bullish-looking story can still have low research confidence."
+)
 
 st.markdown("## Long-running work continues in the background")
 st.success(
@@ -54,6 +64,7 @@ st.markdown(
 - **Background Jobs** — monitor crawling/research that continues while you move around the app.
 - **Research Evidence** — detailed company-level source attempts, documents, findings and open questions.
 - **Deep Research & Thesis Challenge** — detailed research-depth decisions, deeper evidence-gap work, and Bull/Bear outputs.
+- **Research Confidence** — quality-control view that asks whether the research foundation is strong enough for future valuation work.
 - **Operator Control** — optional advanced controls: strategy tuning, candidate pruning and user overrides.
 - **Runtime Settings** — technical settings such as delay between Screener requests.
 
@@ -110,6 +121,10 @@ terms = [
     ("BULL_CASE_SURVIVES", "The Bull case is better supported by current evidence. This is not a buy recommendation."),
     ("BEAR_CASE_DOMINATES", "The Bear case is better supported by current evidence. This is not an automatic sell recommendation."),
     ("FRAGILE", "The thesis depends heavily on unresolved assumptions, contradictions or weak evidence."),
+    ("HIGH_RESEARCH_CONFIDENCE", "The research/evidence foundation is strong. This says nothing about whether the stock is attractive."),
+    ("MODERATE_RESEARCH_CONFIDENCE", "Useful research exists, but important quality gaps remain visible."),
+    ("LOW_RESEARCH_CONFIDENCE", "Do not let later valuation/conviction outputs create false precision; strengthen the dossier first."),
+    ("READY_FOR_VALUATION_CONTEXT", "The research foundation is strong enough to support valuation analysis. It does not mean undervalued."),
 ]
 for term, meaning in terms:
     st.write(f"**{term}** — {meaning}")
@@ -128,7 +143,7 @@ st.markdown(
 
 st.markdown("## What should I trust?")
 st.warning(
-    "Treat all scores as prioritization aids, not truth. Prefer the visible chain: **decision → reason → evidence → missing information → next action**. "
+    "Treat all scores as prioritization or quality-control aids, not truth. Prefer the visible chain: **decision → reason → evidence → missing information → next action**. "
     "A high score with poor evidence coverage should never be treated as a strong investment conclusion."
 )
 
@@ -140,8 +155,9 @@ st.markdown(
 3. Open **Research Evidence** for 2–3 names and verify whether the sources/findings make sense to you.
 4. Create the deep-research plan.
 5. Run **Resolve evidence gaps** for companies still in SOURCE_GAP / STRUCTURED / TARGETED / DEEP.
-6. Recheck which names become Bull/Bear-ready.
-7. Run thesis challenge on those names and compare its Bull/Bear conclusions with your own judgement.
+6. Recheck which names become Bull/Bear-ready and run the thesis challenge.
+7. Open **Research Confidence** and inspect why the strongest/weakest dossiers received their quality state.
+8. Compare the app's conclusions with your own judgement.
 
 This is the best way to evaluate whether the product is adding real research value before we build valuation, conviction and portfolio layers.
 """
