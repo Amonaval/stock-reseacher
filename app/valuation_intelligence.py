@@ -24,10 +24,6 @@ def _num(value, default=None):
         return default
 
 
-def _positive(values):
-    return [float(x) for x in values if _num(x) is not None and float(x) > 0]
-
-
 def _text_blob(company) -> str:
     parts: list[str] = [company.company]
     for item in list(company.evidence or [])[:250]:
@@ -92,8 +88,7 @@ def _latest(company, key: str):
     assessment = company.financial_assessment or {}
     if _num(assessment.get(key)) is not None:
         return _num(assessment.get(key))
-    history = company.financial_history or []
-    for row in reversed(history):
+    for row in reversed(company.financial_history or []):
         if _num(row.get(key)) is not None:
             return _num(row.get(key))
     return None
@@ -135,15 +130,20 @@ def _gate(company) -> dict:
 
 
 def _normalized_eps(company, periods: int = 3) -> dict:
-    eps = _positive(_series(company, "eps"))
-    latest = _num((company.financial_assessment or {}).get("eps_latest")) or (eps[-1] if eps else None)
+    eps = _series(company, "eps")
+    latest = _num((company.financial_assessment or {}).get("eps_latest"))
+    if latest is None and eps:
+        latest = eps[-1]
     trailing = eps[-periods:] if eps else []
     normalized = median(trailing) if trailing else latest
     return {
         "latest_eps": round(latest, 2) if latest is not None else None,
         "normalized_eps": round(normalized, 2) if normalized is not None else None,
         "periods_used": len(trailing),
-        "method": f"median of last {len(trailing)} positive annual EPS observations" if trailing else "latest available EPS",
+        "method": (
+            f"median of last {len(trailing)} annual EPS observations, including weak/loss years"
+            if trailing else "latest available EPS"
+        ),
     }
 
 
@@ -233,7 +233,7 @@ def _earnings_valuation(company, family: str, assumptions: dict | None = None) -
     eps_info = _normalized_eps(company, periods=5 if family == "CYCLICAL_NORMALIZED" else 3)
     eps = eps_info.get("normalized_eps")
     if eps is None or eps <= 0:
-        return {"ok": False, "reason": "Positive normalized EPS is required for this earnings-multiple framework."}
+        return {"ok": False, "reason": "Normalized EPS is not positive; an earnings-multiple valuation would be misleading for the available history."}
 
     anchor = _multiple_anchor(company, allow_current_fallback=True)
     base = _num(assumptions.get("base_multiple")) or anchor.get("base_multiple")
@@ -263,7 +263,7 @@ def _earnings_valuation(company, family: str, assumptions: dict | None = None) -
         "scenario_multiples": multiples,
         "fair_values": fair_values,
         "assumption_note": (
-            "Cyclical earnings use a longer normalized EPS history and a wider downside haircut."
+            "Cyclical earnings use a longer full-cycle EPS history, including weak/loss years, and a wider downside haircut."
             if family == "CYCLICAL_NORMALIZED"
             else "Scenario multiples are anchored to available historical/industry context; current P/E is used only as a labeled fallback when stronger anchors are absent."
         ),
@@ -285,6 +285,7 @@ def value_company(company, *, family_override: str | None = None, assumptions: d
         "company": company.company,
         "as_of": datetime.now(timezone.utc).isoformat(),
         "current_price": round(current_price, 2) if current_price is not None else None,
+        "price_context": "CAPTURED_DURING_FINANCIAL_RESEARCH_NOT_LIVE",
         "research_gate": gate,
         "valuation_family": family_info,
         "status": "BLOCKED",
@@ -301,6 +302,8 @@ def value_company(company, *, family_override: str | None = None, assumptions: d
         result["warnings"].append("Operator override: valuation is being shown despite an incomplete Research Confidence gate.")
     if current_price is None or current_price <= 0:
         result["warnings"].append("Current market price is missing; upside/downside cannot be calculated.")
+    else:
+        result["warnings"].append("Current price is the value captured during the run's financial-research stage; Valuation Intelligence v1 does not live-refresh market quotes.")
 
     family = family_info["family"]
     if family == "INSURANCE_EMBEDDED_VALUE":
