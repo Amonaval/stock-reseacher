@@ -20,7 +20,7 @@ A successful function call is not considered research completion.
 
 For first-time use, read [User Guide](docs/USER_GUIDE.md).
 
-The application home page is now **Guided Research**. It presents one six-step journey and always shows a **Next recommended action**. Specialist workspaces are optional and should normally be opened only when the guided flow points to them.
+The application home page is **Guided Research**. It presents one six-step journey and always shows a **Next recommended action**. Specialist workspaces are optional and should normally be opened only when the guided flow points to them.
 
 ```text
 1. Connect & prepare strategies
@@ -31,7 +31,7 @@ The application home page is now **Guided Research**. It presents one six-step j
         ↓
 4. Research the business
         ↓
-5. Allocate deeper research
+5. Deepen unresolved research
         ↓
 6. Challenge the thesis
 ```
@@ -61,12 +61,34 @@ Source-attempt ledger + evidence dossier
         ↓
 SOURCE_GAP / RESEARCH_INCOMPLETE / EVIDENCE_READY
         ↓
-Progressive deep research
+Depth planning
+        ↓
+Execute deeper evidence-gap research where needed
+        ↓
+Rebuild depth plan
         ↓
 Bull/Bear adversarial challenge
 ```
 
 The valuation / conviction / final-ranking / portfolio layers remain deliberately paused until the current research foundation has been evaluated strategically.
+
+## Long-running work runs in the background
+
+Crawling/research is no longer tied to the current Streamlit page.
+
+Detached local worker jobs are used for:
+
+- screen discovery;
+- historical query fetch;
+- strategy execution and result crawling;
+- financial collection;
+- company research;
+- deeper evidence-gap resolution;
+- Bull/Bear thesis challenge.
+
+You may navigate anywhere in the app while these jobs run. Progress and errors are persisted under `jobs/` and can be inspected from **Background Jobs**.
+
+The app currently allows one long-running background worker per research run at a time to avoid concurrent writes to the same run state.
 
 ## Main application areas
 
@@ -84,6 +106,16 @@ It provides:
 ### User Guide
 
 Plain-language explanation of the workflow, specialist pages and status terminology.
+
+### Background Jobs
+
+Monitor long-running work that continues independently of Streamlit page navigation:
+
+- status and progress;
+- current action;
+- process ID;
+- completion/failure;
+- worker log.
 
 ### Research Evidence
 
@@ -103,6 +135,7 @@ Detailed workspace for:
 - research-depth budgets;
 - budget utilization;
 - company-by-company depth decisions;
+- execution of deeper evidence-gap research;
 - Bull and Bear arguments;
 - contradictions;
 - fragility;
@@ -194,6 +227,7 @@ The engine provides:
 - document-type prioritization
 - per-company source acquisition attempts
 - fetch success/failure visibility
+- persistent source/evidence accumulation across retries
 - deterministic source-linked evidence extraction
 - optional semantic LLM extraction
 - evidence IDs and page references
@@ -204,20 +238,27 @@ The engine provides:
 
 Research states are intentionally different from investment opinions:
 - `SOURCE_GAP` — insufficient usable source/evidence base
-- `RESEARCH_INCOMPLETE` — evidence exists, but important missions/source classes remain open
-- `EVIDENCE_READY` — current company-research contract is satisfied; ready for deeper challenge
+- `RESEARCH_INCOMPLETE` — evidence exists, but critical source coverage or important missions remain open
+- `EVIDENCE_READY` — a sufficient core/current evidence base and analyst-mission coverage exist; ready for deeper challenge
 
 `EVIDENCE_READY` does **not** mean BUY.
+
+The evidence contract is sufficient rather than checkbox-complete: an annual report/core source, at least one fresh operating/disclosure source, and adequate mission coverage are required. Missing supplementary source classes remain visible instead of automatically blocking the company.
 
 ### Deep research and thesis challenge
 
 - dossier-aware research-depth planner
 - transparent capacity budgets
 - companies retained in `RESEARCH_QUEUE` rather than silently dropped
+- executable deeper evidence-gap pass for `SOURCE_GAP / STRUCTURED / TARGETED / DEEP`
+- automatic dossier + depth-plan rebuild after deeper research
+- explicit downside/risk evidence gate
 - independent Bull and Bear evidence cases
 - neutral contradiction challenge
 - fragility and unresolved-question output
 - deterministic fallback when no compatible LLM is configured
+
+The Bull/Bear gate deliberately refuses to manufacture a thesis from weak evidence. `research_readiness` remains visible as a diagnostic but is not stacked as another opaque hard cutoff after explicit evidence gates have already passed.
 
 ## Quick start
 
@@ -306,6 +347,7 @@ python -m pip install -r requirements.txt
 - [Research Stage Contracts](docs/RESEARCH_STAGE_CONTRACTS.md)
 - [Operator Control](docs/OPERATOR_CONTROL.md)
 - [Company Research Engine](docs/COMPANY_RESEARCH_ENGINE.md)
+- [Background Jobs & Deep Research](docs/BACKGROUND_JOBS_AND_DEEP_RESEARCH.md)
 - [Deep Research & Thesis Challenge](docs/DEEP_RESEARCH_AND_THESIS_CHALLENGE.md)
 - [Strategic Review Checkpoint](docs/STRATEGIC_REVIEW_CHECKPOINT.md)
 
@@ -317,19 +359,3 @@ Other implementation docs:
 - [Autonomy and data sources](docs/AUTONOMY_AND_DATA_SOURCES.md)
 - [Setup and troubleshooting](docs/SETUP_AND_TROUBLESHOOTING.md)
 - [Roadmap](ROADMAP.md)
-
-## Important limitations
-
-- This is research software, not a SEBI-registered advisory service.
-- Strategy overlap, financial score, research readiness and evidence readiness are not expected-return probabilities.
-- Screener is a POC adapter, not intended to remain the permanent authoritative data layer.
-- Source acquisition should be validated against real companies before downstream intelligence is trusted heavily.
-- Deterministic evidence extraction is intentionally conservative and shallow compared with semantic research.
-- Sector-specific financial models are not yet implemented.
-- Final valuation, conviction, ranking and portfolio construction remain deliberately pending.
-
-## Current checkpoint
-
-The current milestone is **guided-workflow UX consolidation on top of the completed screening → financial → company research → deep research → thesis challenge chain**.
-
-The next product step should be a strategic review and one real end-to-end experiment on a manageable company set before valuation/conviction work begins.
