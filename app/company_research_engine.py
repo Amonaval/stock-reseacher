@@ -50,7 +50,8 @@ RESEARCH_MISSIONS = {
     },
 }
 
-REQUIRED_DOCUMENT_TYPES = {
+# These are desirable source classes, not six mandatory checkboxes.
+TARGET_DOCUMENT_TYPES = {
     "annual_report",
     "quarterly_result",
     "investor_presentation",
@@ -58,6 +59,9 @@ REQUIRED_DOCUMENT_TYPES = {
     "exchange_filing",
     "credit_rating",
 }
+REQUIRED_DOCUMENT_TYPES = TARGET_DOCUMENT_TYPES  # backward-compatible public name
+CORE_DOCUMENT_TYPES = {"annual_report"}
+RECENT_DOCUMENT_TYPES = {"quarterly_result", "investor_presentation", "earnings_call", "exchange_filing"}
 
 
 def _now():
@@ -80,13 +84,23 @@ def _source_candidate(row: dict, company: str) -> dict:
     return row
 
 
+def _merge_unique(existing: list[dict], new: list[dict], id_key: str) -> list[dict]:
+    out, seen = [], set()
+    for item in list(existing or []) + list(new or []):
+        marker = item.get(id_key) or item.get("url") or repr(sorted(item.items()))
+        if marker in seen:
+            continue
+        seen.add(marker)
+        out.append(item)
+    return out
+
+
 def _mission_summary(evidence: list[dict]) -> dict:
     by_theme = defaultdict(list)
     for item in evidence:
         by_theme[str(item.get("theme") or "other")].append(item)
 
-    missions = []
-    covered = 0
+    missions, covered = [], 0
     for mission_id, spec in RESEARCH_MISSIONS.items():
         items = []
         for theme in spec["themes"]:
@@ -120,24 +134,47 @@ def build_investor_dossier(company_obj, memory: dict | None = None) -> dict:
     evidence = list(company_obj.evidence or [])
     mission = _mission_summary(evidence)
     doc_types = sorted({d.get("doc_type") for d in company_obj.documents if d.get("doc_type")})
-    missing_docs = sorted(REQUIRED_DOCUMENT_TYPES - set(doc_types))
+    doc_set = set(doc_types)
+    missing_docs = sorted(TARGET_DOCUMENT_TYPES - doc_set)
+    has_core = bool(CORE_DOCUMENT_TYPES & doc_set)
+    has_recent = bool(RECENT_DOCUMENT_TYPES & doc_set)
+    critical_source_gaps = []
+    if not has_core:
+        critical_source_gaps.append("annual_report")
+    if not has_recent:
+        critical_source_gaps.append("recent_operating_or_exchange_source")
+
     risks = [e for e in evidence if e.get("theme") in {"risk", "governance"} or str(e.get("kind", "")).upper() in {"RISK", "GOVERNANCE"}]
     catalysts = [e for e in evidence if e.get("theme") == "catalyst" or str(e.get("kind", "")).upper() == "CATALYST"]
     management_claims = [e for e in evidence if str(e.get("kind", "")).upper() in {"MANAGEMENT_CLAIM", "OUTLOOK"}]
 
     if not company_obj.documents or not evidence:
         state = "SOURCE_GAP"
-    elif missing_docs or mission["mission_coverage"] < 70:
+    elif critical_source_gaps or mission["mission_coverage"] < 70:
         state = "RESEARCH_INCOMPLETE"
     else:
         state = "EVIDENCE_READY"
 
     open_questions = []
-    for doc_type in missing_docs:
+    if not has_core:
         open_questions.append({
             "status": "OPEN",
-            "question": f"Acquire/verify missing {doc_type.replace('_', ' ')} evidence.",
-            "reason": "Required source-class coverage gap",
+            "question": "Acquire/verify annual report evidence.",
+            "reason": "Core longitudinal source required before thesis challenge",
+        })
+    if not has_recent:
+        open_questions.append({
+            "status": "OPEN",
+            "question": "Acquire at least one recent result, filing, presentation or earnings-call source.",
+            "reason": "A current operating/disclosure source is required before thesis challenge",
+        })
+    for doc_type in missing_docs:
+        if doc_type == "annual_report" or doc_type in RECENT_DOCUMENT_TYPES and not has_recent:
+            continue
+        open_questions.append({
+            "status": "OPEN",
+            "question": f"Consider acquiring {doc_type.replace('_', ' ')} evidence if material to the thesis.",
+            "reason": "Supplementary source-class gap; visible but not an automatic blocker",
         })
     for m in mission["missions"]:
         if m["status"] == "OPEN":
@@ -153,6 +190,7 @@ def build_investor_dossier(company_obj, memory: dict | None = None) -> dict:
         "documents": len(company_obj.documents),
         "document_types": doc_types,
         "missing_document_types": missing_docs,
+        "critical_source_gaps": critical_source_gaps,
         "evidence_items": len(evidence),
         "evidence_quality": memory.get("evidence_quality", 0),
         "research_readiness": memory.get("research_readiness", 0),
@@ -163,11 +201,11 @@ def build_investor_dossier(company_obj, memory: dict | None = None) -> dict:
         "management_claims": management_claims[:12],
         "open_questions": open_questions,
         "what_happens_next": (
-            "Acquire missing authoritative sources before deeper research."
+            "Acquire a usable core/current evidence base before deeper research."
             if state == "SOURCE_GAP"
-            else "Resolve open analyst missions and missing source classes."
+            else "Resolve critical source gaps and uncovered analyst missions."
             if state == "RESEARCH_INCOMPLETE"
-            else "Eligible for progressive deep research / adversarial challenge."
+            else "Evidence contract is sufficient; remaining supplementary gaps stay visible while deep/Bull-Bear gates assess readiness."
         ),
     }
 
@@ -182,12 +220,7 @@ def run_company_research_engine(
     min_source_score: float = 45,
     progress=None,
 ):
-    """Constitution-driven company research.
-
-    The engine records discovery/fetch attempts, selects authoritative sources,
-    extracts source-linked evidence, builds an investor-readable dossier and never
-    treats a crawler finishing as research completion.
-    """
+    """Constitution-driven company research with persistent evidence accumulation."""
     requested = {_key(x) for x in company_names or []}
     eligible = []
     for company in run.companies.values():
@@ -202,59 +235,40 @@ def run_company_research_engine(
 
     run.status = "COLLECTING_RESEARCH"
     run.log(
-        "RESEARCH",
-        "ENGINE_START",
+        "RESEARCH", "ENGINE_START",
         f"Starting constitution-driven company research for {len(eligible)} companies.",
-        details={
-            "max_sources_per_type": max_sources_per_type,
-            "min_source_score": min_source_score,
-            "use_llm": use_llm,
-        },
+        details={"max_sources_per_type": max_sources_per_type, "min_source_score": min_source_score, "use_llm": use_llm},
     )
 
     discovered_by_company = defaultdict(list)
     delay = get_screener_delay()
 
-    # 1) Sources visible from the exact company page.
     with ScreenerAdapter(cdp_url, delay=delay) as adapter:
         for i, company in enumerate(eligible, 1):
-            company.source_attempts = []
             if progress:
                 progress(i, len(eligible), company.company, "discover_company_page")
             if not company.screener_url:
-                attempt = {
-                    "at": _now(), "stage": "DISCOVERY", "provider": "screener",
-                    "status": "SKIPPED", "url": "", "doc_type": "",
-                    "message": "Exact company URL missing.",
-                }
+                attempt = {"at": _now(), "stage": "DISCOVERY", "provider": "screener", "status": "SKIPPED", "url": "", "doc_type": "", "message": "Exact company URL missing."}
                 company.source_attempts.append(attempt)
                 run.log("RESEARCH", "SOURCE_DISCOVERY_GAP", attempt["message"], company=company.company, status="WARN")
                 continue
             try:
-                rows = adapter.discover_company_documents(company.screener_url, company.company)
-                rows = [_source_candidate(r, company.company) for r in rows]
+                rows = [_source_candidate(r, company.company) for r in adapter.discover_company_documents(company.screener_url, company.company)]
                 discovered_by_company[_key(company.company)].extend(rows)
                 company.source_attempts.append({
-                    "at": _now(), "stage": "DISCOVERY", "provider": "screener_company_page",
-                    "status": "SUCCESS", "url": company.screener_url, "doc_type": "",
-                    "message": f"Discovered {len(rows)} candidate research links.",
+                    "at": _now(), "stage": "DISCOVERY", "provider": "screener_company_page", "status": "SUCCESS",
+                    "url": company.screener_url, "doc_type": "", "message": f"Discovered {len(rows)} candidate research links.",
                 })
-                run.log(
-                    "RESEARCH", "SOURCES_DISCOVERED",
-                    f"Found {len(rows)} research links on the company page.",
-                    company=company.company,
-                    details={"source_types": sorted({x.get('doc_type') for x in rows if x.get('doc_type')})},
-                )
+                run.log("RESEARCH", "SOURCES_DISCOVERED", f"Found {len(rows)} research links on the company page.", company=company.company,
+                        details={"source_types": sorted({x.get('doc_type') for x in rows if x.get('doc_type')})})
             except Exception as exc:
                 company.source_attempts.append({
-                    "at": _now(), "stage": "DISCOVERY", "provider": "screener_company_page",
-                    "status": "FAILED", "url": company.screener_url, "doc_type": "",
-                    "message": str(exc),
+                    "at": _now(), "stage": "DISCOVERY", "provider": "screener_company_page", "status": "FAILED",
+                    "url": company.screener_url, "doc_type": "", "message": str(exc),
                 })
                 run.log("RESEARCH", "SOURCE_DISCOVERY_FAILED", str(exc), company=company.company, status="WARN")
             time.sleep(max(0, delay))
 
-    # 2) Optional broad discovery. This enhances the POC but is not required.
     provider = BraveSearchProvider()
     if provider.configured():
         for i, company in enumerate(eligible, 1):
@@ -265,37 +279,34 @@ def run_company_research_engine(
                 rows = [_source_candidate(r, company.company) for r in rows]
                 discovered_by_company[_key(company.company)].extend(rows)
                 company.source_attempts.append({
-                    "at": _now(), "stage": "DISCOVERY", "provider": provider.name,
-                    "status": "SUCCESS", "url": "", "doc_type": "",
+                    "at": _now(), "stage": "DISCOVERY", "provider": provider.name, "status": "SUCCESS", "url": "", "doc_type": "",
                     "message": f"Discovered {len(rows)} broader web-source candidates.",
                 })
                 for err in errors:
                     company.source_attempts.append({
-                        "at": _now(), "stage": "DISCOVERY", "provider": provider.name,
-                        "status": "FAILED", "url": "", "doc_type": "",
+                        "at": _now(), "stage": "DISCOVERY", "provider": provider.name, "status": "FAILED", "url": "", "doc_type": "",
                         "message": err.get("error", str(err)),
                     })
             except Exception as exc:
                 company.source_attempts.append({
-                    "at": _now(), "stage": "DISCOVERY", "provider": provider.name,
-                    "status": "FAILED", "url": "", "doc_type": "", "message": str(exc),
+                    "at": _now(), "stage": "DISCOVERY", "provider": provider.name, "status": "FAILED", "url": "", "doc_type": "", "message": str(exc),
                 })
 
-    # 3) Rank/fetch per company. Do not flood sources just because they were discovered.
-    all_documents = []
-    fetch_errors = []
+    new_documents, fetch_errors = [], []
     for i, company in enumerate(eligible, 1):
         key = _key(company.company)
         ranked = dedupe_and_rank(discovered_by_company.get(key, []))
         queue = select_fetch_queue(ranked, per_type=max_sources_per_type, min_score=min_source_score)
+        already_fetched = {
+            a.get("url") for a in company.source_attempts
+            if a.get("stage") == "FETCH" and a.get("status") == "SUCCESS" and a.get("url")
+        }
+        queue = [x for x in queue if x.get("url") not in already_fetched]
         run.log(
             "RESEARCH", "SOURCE_QUEUE_BUILT",
-            f"Selected {len(queue)} high-value sources from {len(ranked)} discovered candidates.",
+            f"Selected {len(queue)} new high-value sources from {len(ranked)} discovered candidates.",
             company=company.company,
-            details={
-                "selected_types": dict(Counter(x.get("doc_type") for x in queue)),
-                "top_sources": [{"type": x.get("doc_type"), "score": x.get("source_score"), "url": x.get("url")} for x in queue[:10]],
-            },
+            details={"selected_types": dict(Counter(x.get("doc_type") for x in queue)), "top_sources": [{"type": x.get("doc_type"), "score": x.get("source_score"), "url": x.get("url")} for x in queue[:10]]},
         )
         if progress:
             progress(i, len(eligible), company.company, "fetch_sources")
@@ -305,51 +316,47 @@ def run_company_research_engine(
                 doc["source_score"] = source.get("source_score")
                 doc["source_class"] = source.get("source_class")
                 doc["source_domain"] = source.get("domain")
-                all_documents.append(doc)
+                new_documents.append(doc)
                 company.source_attempts.append({
-                    "at": _now(), "stage": "FETCH", "provider": source.get("provider", "web"),
-                    "status": "SUCCESS", "url": source.get("url"), "doc_type": source.get("doc_type"),
-                    "source_score": source.get("source_score"),
+                    "at": _now(), "stage": "FETCH", "provider": source.get("provider", "web"), "status": "SUCCESS",
+                    "url": source.get("url"), "doc_type": source.get("doc_type"), "source_score": source.get("source_score"),
                     "message": f"Fetched {doc.get('page_count', 0)} pages / {doc.get('chunk_count', 0)} chunks.",
                 })
             except Exception as exc:
-                err = {"company": company.company, "url": source.get("url"), "doc_type": source.get("doc_type"), "error": str(exc)}
-                fetch_errors.append(err)
+                fetch_errors.append({"company": company.company, "url": source.get("url"), "doc_type": source.get("doc_type"), "error": str(exc)})
                 company.source_attempts.append({
-                    "at": _now(), "stage": "FETCH", "provider": source.get("provider", "web"),
-                    "status": "FAILED", "url": source.get("url"), "doc_type": source.get("doc_type"),
-                    "source_score": source.get("source_score"), "message": str(exc),
+                    "at": _now(), "stage": "FETCH", "provider": source.get("provider", "web"), "status": "FAILED",
+                    "url": source.get("url"), "doc_type": source.get("doc_type"), "source_score": source.get("source_score"), "message": str(exc),
                 })
 
-    # 4) Evidence extraction and memory.
-    evidence, extraction_errors = extract_research_evidence(all_documents, use_llm=use_llm)
-    financial_context = [c.financial_assessment for c in eligible]
-    memories = build_company_research_memory(all_documents, evidence, financial_ranked=financial_context)
-    memory_map = {_key(m.get("company")): m for m in memories}
+    new_evidence, extraction_errors = extract_research_evidence(new_documents, use_llm=use_llm)
 
     for company in eligible:
         key = _key(company.company)
-        company.documents = [d for d in all_documents if _key(d.get("company")) == key]
-        company.evidence = [e for e in evidence if _key(e.get("company")) == key]
-        memory = memory_map.get(key, {})
+        company.documents = _merge_unique(company.documents, [d for d in new_documents if _key(d.get("company")) == key], "document_id")
+        company.evidence = _merge_unique(company.evidence, [e for e in new_evidence if _key(e.get("company")) == key], "evidence_id")
+
+    all_documents = [d for c in eligible for d in company_or_empty(c.documents)]
+    all_evidence = [e for c in eligible for e in company_or_empty(c.evidence)]
+    financial_context = [c.financial_assessment for c in eligible]
+    memories = build_company_research_memory(all_documents, all_evidence, financial_ranked=financial_context)
+    memory_map = {_key(m.get("company")): m for m in memories}
+
+    for company in eligible:
+        memory = memory_map.get(_key(company.company), {})
         dossier = build_investor_dossier(company, memory)
         company.research_dossier = dossier
         company.research_state = dossier["research_state"]
         company.research_questions = dossier["open_questions"]
-
         status = "INFO" if dossier["research_state"] == "EVIDENCE_READY" else "WARN"
         run.log(
-            "RESEARCH",
-            "COMPANY_RESEARCH_CONCLUDED",
+            "RESEARCH", "COMPANY_RESEARCH_CONCLUDED",
             f"{dossier['research_state']}: {dossier['documents']} documents, {dossier['evidence_items']} evidence items, mission coverage {dossier['mission_coverage']}%.",
-            company=company.company,
-            status=status,
+            company=company.company, status=status,
             details={
-                "document_types": dossier["document_types"],
-                "missing_document_types": dossier["missing_document_types"],
-                "evidence_quality": dossier["evidence_quality"],
-                "research_readiness": dossier["research_readiness"],
-                "what_happens_next": dossier["what_happens_next"],
+                "document_types": dossier["document_types"], "missing_document_types": dossier["missing_document_types"],
+                "critical_source_gaps": dossier["critical_source_gaps"], "evidence_quality": dossier["evidence_quality"],
+                "research_readiness": dossier["research_readiness"], "what_happens_next": dossier["what_happens_next"],
             },
         )
 
@@ -357,19 +364,22 @@ def run_company_research_engine(
     run.stage_summary["research"] = {
         "eligible_companies": len(eligible),
         "discovered_sources": sum(len(v) for v in discovered_by_company.values()),
-        "documents": len(all_documents),
-        "evidence_items": len(evidence),
+        "documents": sum(len(c.documents) for c in eligible),
+        "evidence_items": sum(len(c.evidence) for c in eligible),
         "fetch_errors": len(fetch_errors),
         "extraction_errors": len(extraction_errors),
         "states": dict(states),
         "constitution_complete": all(c.research_state == "EVIDENCE_READY" for c in eligible) if eligible else False,
     }
     run.log(
-        "RESEARCH",
-        "ENGINE_COMPLETE",
+        "RESEARCH", "ENGINE_COMPLETE",
         f"Company research finished with states {dict(states)}. Source gaps remain visible and do not silently advance.",
         status="WARN" if states.get("SOURCE_GAP") or states.get("RESEARCH_INCOMPLETE") else "INFO",
         details=run.stage_summary["research"],
     )
     run.status = "RESEARCH_COMPLETE"
     return memories
+
+
+def company_or_empty(items):
+    return list(items or [])
