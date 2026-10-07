@@ -4,11 +4,9 @@ This guide is written for the end user, not for the developer.
 
 ## The simplest way to use the app
 
-Use **Guided Research** for the normal workflow. Follow the six numbered steps from top to bottom.
+Use **Guided Research** for the normal workflow. Follow the six numbered research steps from top to bottom.
 
 You do not need to understand internal version names, JSON objects, research engines or data-model details.
-
-The normal flow is:
 
 ```text
 1. Connect & prepare strategies
@@ -22,6 +20,10 @@ The normal flow is:
 5. Deepen unresolved research
         ↓
 6. Challenge the thesis
+        ↓
+Research Confidence
+        ↓
+Valuation Intelligence
 ```
 
 The home page always shows a **Next recommended action** so you know what to do next.
@@ -40,225 +42,164 @@ The following stages run in a detached local worker process:
 - deeper evidence-gap resolution;
 - Bull/Bear thesis challenge.
 
-This means changing Streamlit pages does **not** cancel the job.
-
-Background progress and results are persisted under `jobs/`. The directory is ignored by Git.
-
-Use **Background Jobs** in the sidebar to inspect:
-
-- current job;
-- progress;
-- worker status;
-- completion/failure;
-- worker logs.
-
-The app intentionally starts only one long-running background job at a time per research run so multiple workers do not overwrite the same research-run state.
+Changing Streamlit pages does **not** cancel those jobs. Use **Background Jobs** to inspect status, progress and worker logs.
 
 ---
 
-## What each step does
+## What each research step does
 
 ### 1. Connect & prepare strategies
 
-Purpose: define what kinds of companies you want the researcher to look for.
+Define what kinds of companies you want the researcher to look for. The system can learn from historical Screener screens or use an imported fallback file.
 
-You can either:
-
-- connect to your logged-in Screener session and analyze historical screens; or
-- import your historical screen file as a fallback.
-
-The system proposes master strategies from your historical methodology.
-
-If you want control, open **Operator Control** to:
-
-- change strategy philosophy;
-- edit hard queries;
-- enable/disable strategies;
-- preview result size;
-- export/import your tuned strategy profile.
+Use **Operator Control** when you want to edit strategy philosophy, hard queries, enabled strategies or save/load a strategy profile.
 
 ### 2. Screen the market
 
-Purpose: run the enabled strategies and create one deduplicated candidate list.
-
-The live Screener POC path:
-
-- executes each query;
-- crawls result pages;
-- captures exact company links;
-- keeps visible ratios;
-- combines overlaps across strategies.
-
-If the result set is too broad, return to **Operator Control** and tighten the strategy before continuing.
+Run the enabled strategies and create one deduplicated candidate list. The live Screener POC executes queries, crawls result pages, captures exact company links and preserves visible screen metrics.
 
 ### 3. Check financial quality
 
-Purpose: automatically collect multi-period company financials and decide which candidates deserve expensive research.
+Collect multi-period financials and decide which companies deserve expensive company research.
 
 Important rules:
 
 - missing data is not treated as neutral;
-- low coverage becomes `DATA_RETRY` rather than a confident pass;
-- scores are internal prioritization aids, not investment truth.
-
-After this step you may open **Operator Control** to explicitly include/exclude companies from company research.
+- weak coverage becomes `DATA_RETRY`;
+- internal scores are prioritization aids, not investment truth.
 
 ### 4. Research the business
 
-Purpose: acquire source documents and build a source-linked research dossier.
+Acquire source documents and build a source-linked research dossier covering business model, growth, cash conversion, management, governance, risks and catalysts.
 
-The researcher looks for evidence about:
-
-- business model and economics;
-- growth drivers;
-- cash conversion and working capital;
-- management and capital allocation;
-- governance;
-- business/financial risks;
-- catalysts and milestones.
-
-Open **Research Evidence** when you want to inspect:
-
-- what sources were attempted;
-- what documents were fetched;
-- what evidence was extracted;
-- what questions remain open;
-- why the company is `SOURCE_GAP`, `RESEARCH_INCOMPLETE` or `EVIDENCE_READY`.
+Open **Research Evidence** to inspect exactly what was attempted, fetched, learned and left unresolved.
 
 ### 5. Deepen unresolved research
 
-Purpose: first decide how much additional research each company needs, then actually perform that research.
+The depth plan diagnoses how much more research each company needs. Companies may be assigned `SOURCE_GAP`, `STRUCTURED`, `TARGETED`, `DEEP`, `ADVERSARIAL` or `RESEARCH_QUEUE`.
 
-A depth plan is only a diagnosis. Companies can be assigned:
-
-- `SOURCE_GAP`
-- `STRUCTURED`
-- `TARGETED`
-- `DEEP`
-- `ADVERSARIAL`
-- `RESEARCH_QUEUE`
-
-If a company is `SOURCE_GAP`, `STRUCTURED`, `TARGETED` or `DEEP`, use **Resolve evidence gaps in background**.
-
-That deeper pass will:
-
-- broaden source acquisition;
-- preserve evidence already collected;
-- acquire additional useful source classes;
-- fill uncovered fundamental-research missions;
-- seek explicit downside/risk evidence;
-- rebuild each company dossier;
-- automatically rebuild the research-depth plan afterward.
-
-The app no longer requires every possible document class before a company can become evidence-ready. The minimum evidence contract is intentionally practical:
-
-- an annual report or equivalent core longitudinal source;
-- at least one fresh operating/disclosure source such as a result, filing, presentation or earnings call;
-- sufficient fundamental analyst mission coverage.
-
-Other missing source classes stay visible as research gaps rather than becoming absolute blockers.
+Use **Resolve evidence gaps in background** for companies that still need more work. The deeper pass preserves existing evidence, broadens source discovery, fills missing missions, looks for downside evidence and rebuilds the depth plan.
 
 ### 6. Challenge the thesis
 
-Purpose: reduce confirmation bias by deliberately arguing both sides of the same company.
+For sufficiently researched companies:
 
-The automatic gate opens only when the evidence base is strong enough.
+1. a Bull researcher builds the strongest positive case;
+2. a Bear / forensic researcher attacks it;
+3. a neutral challenge identifies surviving arguments, contradictions, fragility and unresolved questions.
 
-For each evidence-ready company:
+This is a confirmation-bias test, not a recommendation.
 
-1. **Bull researcher** — builds the strongest positive thesis supported by current evidence.
-2. **Bear / forensic researcher** — attacks the thesis using supported business, cash-flow, governance, concentration, competition, execution and capital-allocation risks.
-3. **Neutral challenge** — compares both sides and identifies:
-   - which Bull arguments survive;
-   - which Bear arguments survive;
-   - contradictions;
-   - fragile assumptions;
-   - unresolved questions;
-   - evidence still needed.
+---
 
-If no company passes the Bull/Bear gate, that means the app is refusing to manufacture a confident thesis from weak evidence. Return to Step 5 and resolve the remaining evidence gaps.
+## After the six steps: Research Confidence
 
-This stage does **not** produce a buy/sell recommendation or expected-return probability.
+Open **Research Confidence** to judge the quality of the dossier itself.
+
+It evaluates:
+
+- source authority;
+- source freshness;
+- evidence traceability;
+- fundamental mission coverage;
+- cross-source triangulation;
+- downside/governance evidence;
+- contradiction handling;
+- financial-data coverage;
+- unresolved questions.
+
+Important distinction:
+
+> **Research confidence is not investment conviction.**
+
+A bearish thesis may have high research confidence. A compelling growth story may still have low research confidence.
+
+`READY_FOR_VALUATION_CONTEXT` means the evidence foundation is strong enough to support valuation analysis. It does **not** mean undervalued.
+
+---
+
+## Valuation Intelligence
+
+Use **Valuation Intelligence** after Research Confidence.
+
+Valuation Intelligence v1 supports:
+
+- **General / quality businesses** — normalized EPS × contextual P/E scenarios;
+- **Banks / NBFCs / lending businesses** — justified P/B using sustainable ROE, growth and cost of equity;
+- **Cyclicals / commodities** — longer full-cycle EPS normalization, including weak/loss years, with more conservative multiples;
+- **Utilities / regulated / asset-heavy businesses** — conservative normalized-earnings framework in v1;
+- **Insurance** — deliberately blocked until embedded-value / VNB inputs exist.
+
+The automatic valuation family is visible and can be overridden by the operator.
+
+The output is Bear / Base / Bull **scenario valuation**, not a target price.
+
+The app shows:
+
+- captured current price;
+- Bear / Base / Bull fair-value scenarios;
+- upside/downside vs the captured price;
+- valuation family and method;
+- normalized EPS or book-value basis;
+- historical / industry multiple anchors;
+- scenario assumptions;
+- warnings and limitations;
+- what factors would change the valuation.
+
+The current price used by v1 is the value captured during the run's financial-research stage. It is **not live-refreshed** inside Valuation Intelligence.
 
 ---
 
 ## What the sidebar pages mean
 
 ### Guided Research
-The normal end-to-end workflow. Use this page most of the time.
+Normal end-to-end research workflow.
 
 ### User Guide
-Plain-language explanation of the product, statuses and recommended workflow.
+Plain-language explanation of the product.
 
 ### Background Jobs
-Monitor long-running crawling and research while moving freely around the app.
+Monitor crawling/research while navigating freely.
 
 ### Research Evidence
-Detailed source/evidence inspection and company research retry controls.
+Detailed source/evidence inspection.
 
 ### Deep Research & Thesis Challenge
-Detailed research-depth allocation, deeper evidence-gap execution and Bull/Bear thesis analysis.
+Research-depth allocation, gap resolution and Bull/Bear analysis.
+
+### Research Confidence
+Evidence-quality control before valuation.
+
+### Valuation Intelligence
+Business-model-aware Bear / Base / Bull valuation scenarios.
 
 ### Operator Control
-Optional advanced control over:
-
-- strategy philosophy;
-- strategy queries;
-- candidate pruning;
-- financial-stage overrides;
-- deep-research capacity.
+Optional strategy/candidate/override controls.
 
 ### Runtime Settings
-Technical settings such as delay between Screener requests.
+Technical settings such as Screener request delay.
 
 ---
 
 ## Important status terms
 
-### `ADVANCE`
-Financial evidence is sufficient and no hard gate currently blocks company research.
-
-### `WATCHLIST`
-Retain the company, but it is less clean/complete than a straightforward advance.
-
-### `DATA_RETRY`
-Financial data is too incomplete for a confident decision. This is not a rejection.
-
-### `SOURCE_GAP`
-The research engine could not acquire enough usable source evidence. This is not proof that the company is weak.
-
-### `RESEARCH_INCOMPLETE`
-Some evidence exists, but critical source coverage or important analyst missions remain open.
-
-### `EVIDENCE_READY`
-A sufficient core/current evidence base and enough analyst-mission coverage exist. Optional research gaps may remain visible. This means ready for deeper challenge, not ready to buy.
-
-### `STRUCTURED`
-Core evidence exists but significant research structure/coverage still needs work.
-
-### `TARGETED`
-The remaining gaps are narrower and can be investigated specifically.
-
-### `DEEP`
-The company needs deeper thesis work, often around downside evidence, unresolved assumptions, management claims, competition or cash conversion.
-
-### `RESEARCH_QUEUE`
-The evidence gate passed, but the current research-depth budget is full. The company remains retained.
-
-### `ADVERSARIAL`
-Enough evidence, readiness and explicit downside evidence exist to justify independent Bull/Bear analysis.
-
-### `CONTESTED`
-Bull and Bear evidence remain relatively balanced after challenge.
-
-### `BULL_CASE_SURVIVES`
-The Bull case is better supported by the current evidence set. This is not a buy recommendation.
-
-### `BEAR_CASE_DOMINATES`
-The Bear case is better supported by the current evidence set. This is not an automatic sell recommendation.
-
-### `FRAGILE`
-The thesis depends heavily on unresolved assumptions, contradictions or weak evidence.
+- `ADVANCE` — financial evidence is sufficient for company research.
+- `WATCHLIST` — retain, but the financial case is mixed.
+- `DATA_RETRY` — financial coverage is too incomplete for a confident decision.
+- `SOURCE_GAP` — insufficient usable source evidence.
+- `RESEARCH_INCOMPLETE` — research exists but important gaps remain.
+- `EVIDENCE_READY` — current company-research contract is satisfied; not a buy signal.
+- `STRUCTURED / TARGETED / DEEP` — progressively deeper research work is required.
+- `RESEARCH_QUEUE` — evidence gate passed but current research capacity is full.
+- `ADVERSARIAL` — enough evidence exists for independent Bull/Bear challenge.
+- `CONTESTED` — Bull and Bear evidence remain relatively balanced.
+- `BULL_CASE_SURVIVES` — Bull evidence survives better; not a buy recommendation.
+- `BEAR_CASE_DOMINATES` — Bear evidence dominates; not an automatic sell recommendation.
+- `FRAGILE` — thesis depends heavily on unresolved assumptions/contradictions.
+- `HIGH / MODERATE / LOW_RESEARCH_CONFIDENCE` — quality of the research process, not stock attractiveness.
+- `READY_FOR_VALUATION_CONTEXT` — evidence foundation is strong enough for valuation analysis.
+- `VALUED` — the selected valuation framework had enough inputs to produce scenarios.
+- `BLOCKED` — valuation is intentionally withheld because the research gate, data or valuation family is insufficient.
 
 ---
 
@@ -270,30 +211,25 @@ Prefer this chain:
 Decision
 → Why
 → Evidence
+→ Assumptions
 → Missing information
 → Next action
 ```
 
-Do not over-focus on numeric scores.
-
-A high score with weak evidence coverage is not a strong research conclusion.
+Do not over-focus on numeric scores or a single fair-value number.
 
 ---
 
 ## Recommended first real acceptance test
 
-Do not start with hundreds of stocks.
-
-A useful first validation run is:
-
 1. tune strategies until the result set is manageable;
 2. carry roughly 5–15 companies through financial analysis;
-3. inspect 2–3 company dossiers manually in Research Evidence;
-4. verify that the sources/findings are sensible;
-5. create the deep-research plan;
-6. run **Resolve evidence gaps** for names in `SOURCE_GAP`, `STRUCTURED`, `TARGETED` or `DEEP`;
-7. review which names become `ADVERSARIAL`;
-8. run Bull/Bear thesis challenge on those names;
-9. compare the app's thesis challenge with your own judgement.
+3. inspect 2–3 dossiers in Research Evidence;
+4. resolve deep research gaps;
+5. run Bull/Bear on evidence-ready names;
+6. inspect Research Confidence;
+7. run Valuation Intelligence for 2–3 research-ready companies;
+8. challenge the selected valuation family, normalized earnings, benchmark anchors and Bear/Base/Bull assumptions;
+9. compare the app's reasoning with your own judgement—not just the resulting number.
 
-Only after this workflow proves useful should we invest heavily in valuation, conviction, ranking and portfolio-construction layers.
+Conviction, final ranking and portfolio construction should only be built after this valuation behavior proves useful on real companies.
