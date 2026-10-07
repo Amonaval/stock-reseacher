@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import streamlit as st
 
+from navigation import render_navigation
 from runtime_settings import get_screener_delay, save_screener_delay
 
-st.set_page_config(page_title="Runtime Settings · Personal AI Stock Researcher", layout="wide")
-st.title("Runtime Settings")
-st.caption("Control external-source behavior without changing research logic.")
+st.set_page_config(page_title="Runtime Settings · Personal AI Stock Researcher", page_icon="⚙️", layout="wide")
+render_navigation()
+
+st.title("⚙️ Runtime Settings")
+st.caption("Technical controls only. Most users should leave these defaults unchanged unless the guided workflow suggests otherwise.")
 
 st.markdown("## Screener pacing")
 current = get_screener_delay()
@@ -40,3 +43,5 @@ st.write("**Large run / conservative:** 2.5–4.0s")
 st.warning(
     "This is pacing, not a guarantee against rate limiting. The app should remain conservative and must not attempt to bypass access controls."
 )
+
+st.page_link("main.py", label="← Return to Guided Research")
