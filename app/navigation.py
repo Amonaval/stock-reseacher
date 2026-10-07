@@ -18,7 +18,8 @@ def render_navigation(*, show_settings_hint: bool = True) -> None:
         st.caption("Specialist workspaces")
         st.page_link("pages/3_Research_Evidence.py", label="🔎 Research Evidence")
         st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="⚖️ Deep Research & Thesis Challenge")
-        st.page_link("pages/7_Research_Confidence.py", label="🧭 Research Confidence", help="Judge evidence quality before future valuation work")
+        st.page_link("pages/7_Research_Confidence.py", label="🧭 Research Confidence", help="Judge evidence quality before valuation")
+        st.page_link("pages/8_Valuation_Intelligence.py", label="🧮 Valuation Intelligence", help="Bear/Base/Bull valuation scenarios after the research-quality gate")
         st.page_link("pages/1_Operator_Control.py", label="🎛️ Operator Control")
         st.page_link("pages/2_Runtime_Settings.py", label="⚙️ Runtime Settings")
         if show_settings_hint:
