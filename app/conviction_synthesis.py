@@ -14,6 +14,7 @@ DECISION_STATES = {
     "RISK_DOMINATED_RESEARCH_CASE": "Risk-dominated research case",
     "CONTESTED_RESEARCH_CASE": "Contested research case",
     "HIGH_PRIORITY_RESEARCH_CANDIDATE": "High-priority research candidate",
+    "POSITIVE_THESIS_WIDE_DOWNSIDE": "Positive thesis but wide Bear-case downside",
     "POSITIVE_THESIS_NEAR_BASE_VALUE": "Positive thesis near base valuation",
     "POSITIVE_THESIS_VALUATION_STRETCHED": "Positive thesis but valuation stretched",
 }
@@ -78,7 +79,7 @@ def _valuation_posture(valuation: dict) -> dict:
     bull = _num((scenarios.get("bull") or {}).get("upside_downside_pct"))
     if base is None:
         state = "SCENARIO_AVAILABLE_PRICE_COMPARISON_MISSING"
-        reason = "Valuation scenarios exist, but price comparison is unavailable."
+        reason = "Valuation scenarios exist, but captured-price comparison is unavailable."
     elif base >= 20:
         state = "CAPTURED_PRICE_BELOW_BASE_SCENARIO"
         reason = f"Base fair-value scenario is {base:+.1f}% versus the price captured during financial research."
@@ -164,10 +165,12 @@ def synthesize_company(company) -> dict[str, Any]:
     fragility = thesis.get("fragility")
     thesis_status = thesis.get("status")
     base_delta = valuation_posture.get("base_vs_captured_pct")
+    bear_delta = valuation_posture.get("bear_vs_captured_pct")
 
     reasons = []
     blockers = []
 
+    # Evidence completeness and adversarial state have precedence over valuation.
     if valuation_gate != "READY_FOR_VALUATION_CONTEXT":
         state = "MORE_RESEARCH_NEEDED"
         blockers.extend(critical_gaps or ["Research Confidence has not cleared the valuation-context gate."])
@@ -176,10 +179,6 @@ def synthesize_company(company) -> dict[str, Any]:
         state = "THESIS_CHALLENGE_PENDING"
         blockers.append("Bull/Bear thesis challenge is missing or still reports insufficient evidence.")
         reasons.append("Research quality passed, but the thesis has not survived adversarial review yet.")
-    elif not valuation or valuation.get("status") != "VALUED":
-        state = "VALUATION_CONTEXT_INCOMPLETE"
-        blockers.extend(valuation.get("warnings") or ["Supported valuation scenarios are not available."])
-        reasons.append("The researched thesis exists, but price/value context is incomplete.")
     elif financial.get("system_decision") in {"ELIMINATE", "HOLD"} and not financial.get("operator_override"):
         state = "FINANCIAL_QUALITY_CONFLICT"
         blockers.append(f"Financial stage system decision is {financial.get('system_decision')} without an operator override.")
@@ -193,10 +192,19 @@ def synthesize_company(company) -> dict[str, Any]:
     elif thesis_status == "CONTESTED":
         state = "CONTESTED_RESEARCH_CASE"
         reasons.append("Bull and Bear interpretations remain materially contested after adversarial review.")
+    elif not valuation or valuation.get("status") != "VALUED":
+        state = "VALUATION_CONTEXT_INCOMPLETE"
+        blockers.extend(valuation.get("warnings") or ["Supported valuation scenarios are not available."])
+        reasons.append("The researched thesis exists, but price/value context is incomplete.")
     elif thesis_status == "BULL_CASE_SURVIVES":
-        if base_delta is not None and base_delta >= 20 and (fragility is None or fragility < 55):
+        if bear_delta is not None and bear_delta <= -35:
+            state = "POSITIVE_THESIS_WIDE_DOWNSIDE"
+            reasons.append(
+                f"The Bull case survives, but the Bear valuation scenario is {bear_delta:+.1f}% versus the captured price; downside asymmetry is too wide for a high-priority state."
+            )
+        elif base_delta is not None and base_delta >= 20 and (fragility is None or fragility < 55):
             state = "HIGH_PRIORITY_RESEARCH_CANDIDATE"
-            reasons.append("The Bull case survives adversarial review and the base valuation scenario remains meaningfully above the captured price.")
+            reasons.append("The Bull case survives adversarial review and the base valuation scenario remains meaningfully above the captured price without extreme thesis fragility.")
         elif base_delta is not None and base_delta < -10:
             state = "POSITIVE_THESIS_VALUATION_STRETCHED"
             reasons.append("The Bull case survives, but the captured price is above the current base valuation scenario.")
@@ -221,7 +229,9 @@ def synthesize_company(company) -> dict[str, Any]:
     if unresolved:
         what_raises.extend([f"Answer: {x}" for x in unresolved[:4]])
     if valuation_posture.get("state") == "CAPTURED_PRICE_ABOVE_BASE_SCENARIO":
-        what_raises.append("A lower captured/live market valuation or stronger evidence-backed normalized earnings could improve valuation posture.")
+        what_raises.append("A lower market price on a refreshed future run or stronger evidence-backed normalized earnings could improve valuation posture.")
+    if state == "POSITIVE_THESIS_WIDE_DOWNSIDE":
+        what_raises.append("Narrow the Bear-case downside through stronger downside evidence, less fragile assumptions or a more favorable market price on a refreshed run.")
     if thesis_status == "CONTESTED":
         what_raises.append("Resolve the highest-impact Bull/Bear contradictions with newer primary evidence.")
     if thesis_status == "BULL_CASE_SURVIVES":
@@ -273,7 +283,10 @@ def synthesize_run(run) -> list[dict[str, Any]]:
     for company in run.companies.values():
         if not company.financial_assessment:
             continue
+        investor_review = dict((company.decision_synthesis or {}).get("investor_review") or {})
         result = synthesize_company(company)
+        if investor_review:
+            result["investor_review"] = investor_review
         company.decision_synthesis = result
         results.append(result)
         counts[result["decision_state"]] += 1
@@ -289,10 +302,19 @@ def synthesize_run(run) -> list[dict[str, Any]]:
         f"Decision synthesis completed for {len(results)} companies: {dict(counts)}.",
         details=run.stage_summary["decision_synthesis"],
     )
+    priority = {
+        "HIGH_PRIORITY_RESEARCH_CANDIDATE": 0,
+        "POSITIVE_THESIS_NEAR_BASE_VALUE": 1,
+        "POSITIVE_THESIS_WIDE_DOWNSIDE": 2,
+        "POSITIVE_THESIS_VALUATION_STRETCHED": 3,
+        "CONTESTED_RESEARCH_CASE": 4,
+        "FRAGILE_RESEARCH_CASE": 5,
+        "RISK_DOMINATED_RESEARCH_CASE": 6,
+    }
     return sorted(
         results,
         key=lambda x: (
-            0 if x.get("decision_state") == "HIGH_PRIORITY_RESEARCH_CANDIDATE" else 1,
+            priority.get(x.get("decision_state"), 9),
             x.get("decision_label", ""),
             x.get("company", "").casefold(),
         ),
