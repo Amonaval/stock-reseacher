@@ -16,7 +16,7 @@ st.markdown("## The product in one sentence")
 st.write(
     "The app learns or uses your stock-screening philosophy, finds candidates, verifies their financials, "
     "collects source evidence, resolves important evidence gaps, deliberately argues both sides of the strongest researched theses, "
-    "and then checks whether the research itself is strong enough to support later valuation work."
+    "checks whether the research itself is trustworthy, and only then builds explicit valuation scenarios."
 )
 
 st.markdown("## The normal six-step journey")
@@ -34,16 +34,34 @@ for n, title, text in steps:
 
 st.markdown("## After the six steps: Research Confidence")
 st.write(
-    "Open **Research Confidence** when you want to judge whether the dossier itself is trustworthy enough to support the next analytical layer. "
+    "Open **Research Confidence** when you want to judge whether the dossier itself is trustworthy enough to support valuation. "
     "It checks source authority, source freshness, traceability, analyst-mission coverage, cross-source triangulation, downside evidence, contradiction handling and financial-data coverage."
 )
 st.warning(
     "Research confidence is **not investment conviction**. A bearish thesis can have high research confidence, while a very bullish-looking story can still have low research confidence."
 )
 
+st.markdown("## Then: Valuation Intelligence")
+st.write(
+    "Use **Valuation Intelligence** only after the research-quality gate is ready. The app selects an appropriate valuation family, shows why it chose it, and builds Bear / Base / Bull scenarios from explicit assumptions."
+)
+st.markdown(
+    """
+Current v1 behavior:
+
+- **General / quality businesses** — normalized EPS × contextual P/E scenarios.
+- **Banks / NBFCs / lending businesses** — justified P/B using sustainable ROE, growth and cost of equity.
+- **Cyclicals / commodities** — longer normalized earnings history and more conservative scenario multiples.
+- **Utilities / regulated / asset-heavy businesses** — conservative normalized-earnings framework in v1.
+- **Insurance** — deliberately blocked until embedded-value / VNB inputs exist; the app will not substitute generic P/E or P/B silently.
+
+Every result shows the assumptions and can be manually overridden. Bear / Base / Bull are scenarios, **not probabilities or target-price predictions**.
+"""
+)
+
 st.markdown("## Long-running work continues in the background")
 st.success(
-    "Screen discovery, query crawling, screening, financial collection, company research, deep evidence-gap research and Bull/Bear challenge now run in a separate local worker process."
+    "Screen discovery, query crawling, screening, financial collection, company research, deep evidence-gap research and Bull/Bear challenge run in a separate local worker process."
 )
 st.markdown(
     """
@@ -64,7 +82,8 @@ st.markdown(
 - **Background Jobs** — monitor crawling/research that continues while you move around the app.
 - **Research Evidence** — detailed company-level source attempts, documents, findings and open questions.
 - **Deep Research & Thesis Challenge** — detailed research-depth decisions, deeper evidence-gap work, and Bull/Bear outputs.
-- **Research Confidence** — quality-control view that asks whether the research foundation is strong enough for future valuation work.
+- **Research Confidence** — quality-control view that asks whether the research foundation is strong enough for valuation.
+- **Valuation Intelligence** — explicit sector/business-model-aware Bear / Base / Bull valuation scenarios.
 - **Operator Control** — optional advanced controls: strategy tuning, candidate pruning and user overrides.
 - **Runtime Settings** — technical settings such as delay between Screener requests.
 
@@ -123,8 +142,10 @@ terms = [
     ("FRAGILE", "The thesis depends heavily on unresolved assumptions, contradictions or weak evidence."),
     ("HIGH_RESEARCH_CONFIDENCE", "The research/evidence foundation is strong. This says nothing about whether the stock is attractive."),
     ("MODERATE_RESEARCH_CONFIDENCE", "Useful research exists, but important quality gaps remain visible."),
-    ("LOW_RESEARCH_CONFIDENCE", "Do not let later valuation/conviction outputs create false precision; strengthen the dossier first."),
+    ("LOW_RESEARCH_CONFIDENCE", "Do not let valuation/conviction outputs create false precision; strengthen the dossier first."),
     ("READY_FOR_VALUATION_CONTEXT", "The research foundation is strong enough to support valuation analysis. It does not mean undervalued."),
+    ("VALUED", "The selected valuation framework had sufficient inputs to produce scenario values. It is not a recommendation."),
+    ("BLOCKED", "Valuation is intentionally withheld because the research gate, data inputs or valuation family is insufficient."),
 ]
 for term, meaning in terms:
     st.write(f"**{term}** — {meaning}")
@@ -143,8 +164,8 @@ st.markdown(
 
 st.markdown("## What should I trust?")
 st.warning(
-    "Treat all scores as prioritization or quality-control aids, not truth. Prefer the visible chain: **decision → reason → evidence → missing information → next action**. "
-    "A high score with poor evidence coverage should never be treated as a strong investment conclusion."
+    "Treat all scores and fair values as research aids, not truth. Prefer the visible chain: **decision → reason → evidence → assumptions → missing information → next action**. "
+    "A precise-looking valuation with weak research or weak assumptions should never be treated as a strong investment conclusion."
 )
 
 st.markdown("## Recommended first real test")
@@ -157,9 +178,10 @@ st.markdown(
 5. Run **Resolve evidence gaps** for companies still in SOURCE_GAP / STRUCTURED / TARGETED / DEEP.
 6. Recheck which names become Bull/Bear-ready and run the thesis challenge.
 7. Open **Research Confidence** and inspect why the strongest/weakest dossiers received their quality state.
-8. Compare the app's conclusions with your own judgement.
+8. Open **Valuation Intelligence** for 2–3 research-ready names and challenge the family selection, normalized earnings, anchors and Bear/Base/Bull assumptions.
+9. Compare the app's valuation reasoning with your own judgement—not just the resulting number.
 
-This is the best way to evaluate whether the product is adding real research value before we build valuation, conviction and portfolio layers.
+This is the best way to evaluate whether the product is adding real investment-research value before we build conviction, final ranking and portfolio layers.
 """
 )
 
