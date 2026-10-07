@@ -16,7 +16,7 @@ st.markdown("## The product in one sentence")
 st.write(
     "The app learns or uses your stock-screening philosophy, finds candidates, verifies their financials, "
     "collects source evidence, resolves important evidence gaps, deliberately argues both sides of the strongest researched theses, "
-    "checks whether the research itself is trustworthy, and only then builds explicit valuation scenarios."
+    "checks whether the research itself is trustworthy, builds explicit valuation scenarios, and then synthesizes the whole case without issuing a black-box BUY/SELL call."
 )
 
 st.markdown("## The normal six-step journey")
@@ -51,11 +51,32 @@ Current v1 behavior:
 
 - **General / quality businesses** — normalized EPS × contextual P/E scenarios.
 - **Banks / NBFCs / lending businesses** — justified P/B using sustainable ROE, growth and cost of equity.
-- **Cyclicals / commodities** — longer normalized earnings history and more conservative scenario multiples.
+- **Cyclicals / commodities** — longer normalized earnings history including weak/loss years and more conservative scenario multiples.
 - **Utilities / regulated / asset-heavy businesses** — conservative normalized-earnings framework in v1.
 - **Insurance** — deliberately blocked until embedded-value / VNB inputs exist; the app will not substitute generic P/E or P/B silently.
 
 Every result shows the assumptions and can be manually overridden. Bear / Base / Bull are scenarios, **not probabilities or target-price predictions**.
+"""
+)
+
+st.markdown("## Finally: Conviction & Decision Synthesis")
+st.write(
+    "Open **Conviction & Decision Synthesis** after the upstream research, thesis challenge and valuation work are meaningful. "
+    "It combines those dimensions into an explainable research state without producing a master conviction score or BUY/SELL instruction."
+)
+st.markdown(
+    """
+Examples of system states:
+
+- **High-priority research candidate** — Bull case survived, research quality passed and the Base valuation scenario is meaningfully above the captured price without extreme fragility.
+- **Positive thesis near base valuation** — thesis survived, but price/value context is roughly around the Base scenario.
+- **Positive thesis but valuation stretched** — thesis survived, but current assumptions do not support the captured price.
+- **Contested research case** — Bull and Bear interpretations remain material.
+- **Fragile research case** — too much depends on unresolved assumptions/contradictions.
+- **Risk-dominated research case** — Bear evidence currently dominates.
+- **More research / challenge / valuation incomplete** — upstream work is not complete enough for synthesis.
+
+The workspace also lets you save a separate **Investor Review** such as `WATCH_CLOSELY`, `PASS_FOR_NOW` or `HIGH_INTEREST` plus your own LOW/MEDIUM/HIGH conviction and notes. Your view is not used to rewrite the system state.
 """
 )
 
@@ -84,6 +105,7 @@ st.markdown(
 - **Deep Research & Thesis Challenge** — detailed research-depth decisions, deeper evidence-gap work, and Bull/Bear outputs.
 - **Research Confidence** — quality-control view that asks whether the research foundation is strong enough for valuation.
 - **Valuation Intelligence** — explicit sector/business-model-aware Bear / Base / Bull valuation scenarios.
+- **Conviction & Decision Synthesis** — combines the completed research dimensions into an explainable research decision state and optional separate Investor Review.
 - **Operator Control** — optional advanced controls: strategy tuning, candidate pruning and user overrides.
 - **Runtime Settings** — technical settings such as delay between Screener requests.
 
@@ -146,6 +168,11 @@ terms = [
     ("READY_FOR_VALUATION_CONTEXT", "The research foundation is strong enough to support valuation analysis. It does not mean undervalued."),
     ("VALUED", "The selected valuation framework had sufficient inputs to produce scenario values. It is not a recommendation."),
     ("BLOCKED", "Valuation is intentionally withheld because the research gate, data inputs or valuation family is insufficient."),
+    ("HIGH_PRIORITY_RESEARCH_CANDIDATE", "The completed research case deserves investor attention under the current contract. This is not BUY."),
+    ("CONTESTED_RESEARCH_CASE", "Bull and Bear interpretations remain material after synthesis."),
+    ("FRAGILE_RESEARCH_CASE", "The overall case is too dependent on fragile assumptions or unresolved contradictions."),
+    ("RISK_DOMINATED_RESEARCH_CASE", "Bear evidence dominates the synthesized research case."),
+    ("READY_FOR_INVESTOR_REVIEW", "The implemented upstream research stages are complete enough for your review. It is not an instruction to invest."),
 ]
 for term, meaning in terms:
     st.write(f"**{term}** — {meaning}")
@@ -164,8 +191,8 @@ st.markdown(
 
 st.markdown("## What should I trust?")
 st.warning(
-    "Treat all scores and fair values as research aids, not truth. Prefer the visible chain: **decision → reason → evidence → assumptions → missing information → next action**. "
-    "A precise-looking valuation with weak research or weak assumptions should never be treated as a strong investment conclusion."
+    "Treat all scores, fair values and synthesis states as research aids, not truth. Prefer the visible chain: **decision → reason → evidence → assumptions → contradictions → missing information → next action**. "
+    "A precise-looking valuation or positive synthesis with weak upstream evidence should never be treated as a strong investment conclusion."
 )
 
 st.markdown("## Recommended first real test")
@@ -174,14 +201,14 @@ st.markdown(
 1. Use a small/tuned strategy set rather than hundreds of candidates.
 2. Carry roughly **5–15 companies** through financial and company research.
 3. Open **Research Evidence** for 2–3 names and verify whether the sources/findings make sense to you.
-4. Create the deep-research plan.
-5. Run **Resolve evidence gaps** for companies still in SOURCE_GAP / STRUCTURED / TARGETED / DEEP.
-6. Recheck which names become Bull/Bear-ready and run the thesis challenge.
-7. Open **Research Confidence** and inspect why the strongest/weakest dossiers received their quality state.
-8. Open **Valuation Intelligence** for 2–3 research-ready names and challenge the family selection, normalized earnings, anchors and Bear/Base/Bull assumptions.
-9. Compare the app's valuation reasoning with your own judgement—not just the resulting number.
+4. Create the deep-research plan and resolve evidence gaps.
+5. Run the Bull/Bear thesis challenge on evidence-ready names.
+6. Open **Research Confidence** and inspect why the strongest/weakest dossiers received their quality state.
+7. Open **Valuation Intelligence** for 2–3 research-ready names and challenge the family selection, normalized earnings, anchors and Bear/Base/Bull assumptions.
+8. Open **Conviction & Decision Synthesis** and verify that Bear-dominated, fragile or contested cases are not hidden by attractive valuation scenarios.
+9. Record your own Investor Review separately and compare it with the system state.
 
-This is the best way to evaluate whether the product is adding real investment-research value before we build conviction, final ranking and portfolio layers.
+This gives us a complete research-to-decision-quality acceptance test before building ranking, portfolio construction or monitoring.
 """
 )
 
