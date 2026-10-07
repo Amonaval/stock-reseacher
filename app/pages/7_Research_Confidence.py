@@ -15,7 +15,7 @@ st.set_page_config(page_title="Research Confidence · Personal AI Stock Research
 render_navigation()
 
 st.title("🧭 Research Confidence")
-st.caption("Judge the quality of the research before trusting any future valuation or conviction layer.")
+st.caption("Judge the quality of the research before trusting valuation or later conviction layers.")
 st.info(
     "This page measures **confidence in the evidence and research process** — not whether the stock is attractive. "
     "A company can have high research confidence and still have a weak or bearish investment thesis."
@@ -43,7 +43,7 @@ else:
 
 c2.write(
     "Use this after company research and ideally after Bull/Bear challenge. "
-    "It is the quality gate we will use before adding valuation intelligence."
+    "This is the evidence-quality gate used by Valuation Intelligence."
 )
 
 if not existing:
@@ -61,9 +61,12 @@ c.metric("Moderate confidence", state_counts.get("MODERATE_RESEARCH_CONFIDENCE",
 d.metric("Valuation context ready", summary.get("valuation_context_ready", sum(1 for x in existing if x.get("valuation_context") == "READY_FOR_VALUATION_CONTEXT")))
 
 st.caption(
-    "Valuation context ready means the current dossier is sufficiently grounded to support valuation work. "
+    "Valuation context ready means the current dossier is sufficiently grounded to support assumption-driven valuation scenarios. "
     "It does not mean the company is undervalued or investable."
 )
+
+if any(x.get("valuation_context") == "READY_FOR_VALUATION_CONTEXT" for x in existing):
+    st.page_link("pages/8_Valuation_Intelligence.py", label="Open Valuation Intelligence for research-ready companies →")
 
 st.markdown("## Company confidence overview")
 rows = []
@@ -81,7 +84,7 @@ for result in existing:
         "Downside coverage": dims.get("downside_evidence_coverage"),
         "Open questions": result.get("open_questions"),
         "Critical gaps": len(result.get("critical_gaps") or []),
-        "Next quality gate": result.get("valuation_context"),
+        "Valuation gate": result.get("valuation_context"),
     })
 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
@@ -98,9 +101,10 @@ m3.metric("Documents", result.get("documents"))
 m4.metric("Evidence items", result.get("evidence_items"))
 
 if result.get("valuation_context") == "READY_FOR_VALUATION_CONTEXT":
-    st.success("Current evidence is strong enough to support a future valuation-context analysis.")
+    st.success("Current evidence is strong enough to support valuation-context analysis. This is not an undervaluation signal.")
+    st.page_link("pages/8_Valuation_Intelligence.py", label="Value this company in context →")
 else:
-    st.warning("More research is recommended before relying on a future valuation/conviction layer.")
+    st.warning("More research is recommended before relying on valuation or conviction outputs.")
 
 st.markdown("### Why the research has this confidence")
 labels = {
@@ -149,8 +153,8 @@ st.markdown("## How to read this")
 st.markdown(
     """
 - **High research confidence** — strong source/evidence foundation with no current critical gap.
-- **Moderate research confidence** — useful research exists, but one or two important quality gaps remain.
-- **Low research confidence** — do not let later valuation or conviction outputs create false precision; strengthen the dossier first.
+- **Moderate research confidence** — useful research exists, but one or two important quality gaps may remain.
+- **Low research confidence** — do not let valuation or conviction outputs create false precision; strengthen the dossier first.
 
 The overall score is a **quality-control aid**, not an investment score. The dimensions and gaps matter more than the number itself.
 """
@@ -158,4 +162,5 @@ The overall score is a **quality-control aid**, not an investment score. The dim
 
 st.page_link("pages/3_Research_Evidence.py", label="Inspect underlying evidence →")
 st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="Inspect Bull/Bear challenge →")
+st.page_link("pages/8_Valuation_Intelligence.py", label="Open Valuation Intelligence →")
 st.page_link("main.py", label="← Return to Guided Research")
