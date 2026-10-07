@@ -10,6 +10,8 @@ from screener_adapter import ScreenerAdapter
 from research_models import ResearchRun
 from research_service import ResearchService
 from candidates import read_result_file, build_candidate_universe
+from company_research_engine import run_company_research_engine
+from research_analysis_orchestrator import plan_research_for_run, run_thesis_analysis
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
@@ -38,6 +40,7 @@ for k, v in DEFAULTS.items():
 with st.sidebar:
     st.header("Research settings")
     cdp = st.text_input("Logged-in Chrome CDP", "http://127.0.0.1:9222")
+    st.session_state.cdp_url = cdp
     capital = st.number_input("Research capital (₹)", min_value=1000, value=100000, step=10000)
     depth = st.selectbox("Research depth", ["Standard", "Deep"], index=1)
     st.caption("Screener is the initial POC adapter. The research engines are designed so NSE/BSE/provider adapters can replace it later.")
@@ -188,43 +191,95 @@ with T_RESEARCH:
                 st.error(str(exc)); run.log("FINANCIAL","FINANCIAL_STAGE_FAILED",str(exc),status="ERROR")
 
     st.markdown("### 4. Research surviving companies")
-    if st.session_state.financial_assessments:
-        eligible=sum(1 for x in st.session_state.financial_assessments if x.get("decision") in {"ADVANCE","WATCHLIST"})
-        st.caption(f"{eligible} companies currently qualify for company/source research. The app discovers documents itself; uploads are debug overrides only.")
+    eligible_companies = [
+        c for c in run.companies.values()
+        if (c.financial_assessment or {}).get("effective_research_decision", (c.financial_assessment or {}).get("decision"))
+        in {"ADVANCE", "WATCHLIST", "USER_INCLUDE"}
+    ]
+    if eligible_companies:
+        state_counts = {}
+        for company in eligible_companies:
+            state = company.research_state or "NOT_RESEARCHED"
+            state_counts[state] = state_counts.get(state, 0) + 1
+        st.caption(
+            f"{len(eligible_companies)} companies are approved for company research. "
+            f"Current research states: {state_counts}."
+        )
         if st.button("Research companies automatically"):
             bar=st.progress(0); message=st.empty()
             try:
                 def rprogress(i,n,company,status):
                     bar.progress(i/max(n,1)); message.write(f"{i}/{n} {company} — {status}")
-                st.session_state.research_memories = ResearchService(run,RUNS).collect_company_research(cdp,use_llm=False,progress=rprogress)
-                st.success("Company research memory built from automatically discovered/fetched sources where available.")
+                st.session_state.research_memories = run_company_research_engine(
+                    run,
+                    cdp,
+                    company_names=[c.company for c in eligible_companies],
+                    use_llm=False,
+                    max_sources_per_type=2,
+                    min_source_score=45,
+                    progress=rprogress,
+                )
+                run.save(RUNS)
+                st.success(f"Company research complete. States: {run.stage_summary.get('research', {}).get('states', {})}")
             except Exception as exc:
                 st.error(str(exc)); run.log("RESEARCH","RESEARCH_STAGE_FAILED",str(exc),status="ERROR")
+        st.page_link("pages/3_Research_Evidence.py", label="Open detailed Research Evidence workspace →")
 
     st.markdown("### 5. Allocate deeper research")
-    if st.session_state.research_memories:
-        st.caption("This stage allocates research effort, not investment conviction. Evidence gates and research-capacity budgets decide what deserves deeper work.")
+    researched = [c for c in run.companies.values() if c.research_state not in {"", "NOT_RESEARCHED"} or c.evidence]
+    if researched:
+        st.caption(
+            "Research depth determines where additional analyst effort should be spent. It is an attention-allocation decision, not investment conviction."
+        )
         if st.button("Plan progressive deep research"):
             try:
                 budgets={"STRUCTURED":100,"TARGETED":50,"DEEP":25,"ADVERSARIAL":15} if depth=="Deep" else {"STRUCTURED":60,"TARGETED":30,"DEEP":15,"ADVERSARIAL":8}
-                st.session_state.research_plan=ResearchService(run,RUNS).plan_deep_research(st.session_state.research_memories,budgets)
+                st.session_state.research_plan = plan_research_for_run(run, budgets)
+                run.save(RUNS)
                 st.success(f"Research-depth plan ready: {st.session_state.research_plan.get('counts',{})}")
             except Exception as exc:
                 st.error(str(exc)); run.log("RESEARCH_DEPTH","PLANNING_FAILED",str(exc),status="ERROR")
 
+    if st.session_state.research_plan:
+        depth_counts = st.session_state.research_plan.get("counts", {})
+        cols = st.columns(5)
+        for idx, stage in enumerate(["ADVERSARIAL","DEEP","TARGETED","STRUCTURED","SOURCE_GAP"]):
+            cols[idx].metric(stage.replace("_", " ").title(), depth_counts.get(stage, 0))
+        st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="Open Deep Research & Thesis Challenge workspace →")
+
     st.markdown("### 6. Challenge the strongest researched theses")
     if st.session_state.research_plan:
-        ready=sum(1 for x in st.session_state.research_plan.get("rows",[]) if x.get("stage")=="ADVERSARIAL")
-        st.caption(f"{ready} companies currently have enough evidence for independent Bull/Bear challenge. This produces research states, not buy/sell calls.")
-        if st.button("Run Bull/Bear challenge"):
+        ready=[x.get("company") for x in st.session_state.research_plan.get("rows",[]) if x.get("stage")=="ADVERSARIAL"]
+        st.caption(
+            f"{len(ready)} companies currently pass the automatic evidence gate for independent Bull/Bear thesis analysis. "
+            "The output is a research state, not a buy/sell call."
+        )
+        if ready and st.button("Run Bull/Bear thesis challenge"):
             bar=st.progress(0); message=st.empty()
             try:
                 def aprogress(i,n,company):
                     bar.progress(i/max(n,1)); message.write(f"{i}/{n} challenging {company}")
-                st.session_state.adversarial_results=ResearchService(run,RUNS).run_adversarial_research(st.session_state.research_memories,st.session_state.research_plan,aprogress)
-                st.success(f"Bull/Bear challenge complete for {len(st.session_state.adversarial_results)} companies.")
+                st.session_state.adversarial_results = run_thesis_analysis(
+                    run,
+                    st.session_state.research_plan,
+                    company_names=ready,
+                    progress=aprogress,
+                )
+                run.save(RUNS)
+                st.success(f"Bull/Bear thesis analysis complete for {len(st.session_state.adversarial_results)} companies.")
             except Exception as exc:
                 st.error(str(exc)); run.log("ADVERSARIAL","ADVERSARIAL_FAILED",str(exc),status="ERROR")
+
+    if st.session_state.adversarial_results:
+        adf = pd.DataFrame([{
+            "Company": r.get("company"),
+            "Research state": (r.get("classification") or {}).get("thesis_status"),
+            "Thesis balance": (r.get("classification") or {}).get("thesis_balance"),
+            "Fragility": (r.get("classification") or {}).get("fragility_score"),
+            "Adversarial readiness": (r.get("classification") or {}).get("adversarial_readiness"),
+        } for r in st.session_state.adversarial_results])
+        st.dataframe(adf, use_container_width=True, hide_index=True)
+        st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="Inspect full Bull/Bear evidence and contradictions →")
 
     st.markdown("### Research log")
     if run.events:
@@ -263,7 +318,7 @@ with T_COMPANIES:
         if st.session_state.research_plan:
             st.markdown("### Research-depth funnel")
             pdf=pd.DataFrame(st.session_state.research_plan.get("rows",[]))
-            show=[c for c in ["company","stage","reason","documents","document_coverage","evidence_quality","research_readiness","risk_items"] if c in pdf.columns]
+            show=[c for c in ["company","stage","research_state","reason","mission_coverage","document_coverage","evidence_quality","research_readiness","risk_items","open_questions"] if c in pdf.columns]
             st.dataframe(pdf[show],use_container_width=True,hide_index=True)
 
         rows = []
@@ -292,8 +347,11 @@ with T_COMPANIES:
                 labels=fa.get('labels',{})
                 if labels: st.dataframe(pd.DataFrame([labels]),use_container_width=True,hide_index=True)
                 if fa.get('warnings'): st.warning("; ".join(fa.get('warnings',[])))
+            st.write(f"**Research state:** {cr.research_state}")
             st.write(f"**Research documents collected:** {len(cr.documents)}")
             st.write(f"**Evidence items extracted:** {len(cr.evidence)}")
+            if cr.research_dossier:
+                st.write(f"**Fundamental mission coverage:** {cr.research_dossier.get('mission_coverage',0)}%")
             if cr.research_questions:
                 st.markdown("**Open research questions / missing evidence**")
                 for q in cr.research_questions: st.write(f"- {q.get('question')} — {q.get('reason')}")
