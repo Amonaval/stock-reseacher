@@ -54,6 +54,7 @@ class CompanyResearch:
     contradiction_review: dict[str, Any] = field(default_factory=dict)
     adversarial_result: dict[str, Any] = field(default_factory=dict)
     valuation: dict[str, Any] = field(default_factory=dict)
+    decision_synthesis: dict[str, Any] = field(default_factory=dict)
     decisions: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -101,7 +102,7 @@ class ResearchRun:
         allowed = set(CompanyResearch.__dataclass_fields__)
         for key, value in data.get("companies", {}).items():
             # Backward-compatible with research_run.json files produced before
-            # source_attempts/research_state/research_dossier/adversarial_result/valuation existed.
+            # source_attempts/research_state/research_dossier/adversarial_result/valuation/decision_synthesis existed.
             clean = {k: v for k, v in value.items() if k in allowed}
             obj.companies[key] = CompanyResearch(**clean)
         return obj
