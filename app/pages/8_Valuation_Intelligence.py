@@ -129,7 +129,15 @@ with st.expander("Valuation controls & assumptions", expanded=not bool(existing)
         assumptions["bear_cost_of_equity"] = b1.number_input("Bear cost of equity", 8.0, 25.0, 14.0, 0.5) / 100
         assumptions["base_cost_of_equity"] = b2.number_input("Base cost of equity", 8.0, 25.0, 12.0, 0.5) / 100
         assumptions["bull_cost_of_equity"] = b3.number_input("Bull cost of equity", 8.0, 25.0, 11.0, 0.5) / 100
-        st.caption("The v1 financial-business method uses justified P/B = (sustainable ROE − growth) / (cost of equity − growth).")
+        st.caption("The v1 bank/NBFC method uses justified P/B = (sustainable ROE − growth) / (cost of equity − growth).")
+    elif selected_family == "INSURANCE_EMBEDDED_VALUE":
+        st.warning(
+            "Valuation Intelligence v1 deliberately does not substitute generic P/E or P/B for insurers. "
+            "A proper insurer model needs embedded value, value of new business and related insurance-specific inputs."
+        )
+        st.caption("You can still change the family manually if the automatic classification is wrong, but forcing a generic framework should be treated as an operator override rather than the system default.")
+    elif selected_family == "INSUFFICIENT":
+        st.info("No valuation method is selected. Choose another family only if you can justify it from the business model and available data.")
     else:
         st.markdown("**Earnings-multiple assumptions**")
         fa = company.financial_assessment or {}
