@@ -9,17 +9,15 @@ from universe import owners, filter_owners
 from screener_adapter import ScreenerAdapter
 from research_models import ResearchRun
 from research_service import ResearchService
-from candidates import read_result_file, build_candidate_universe
 from company_research_engine import run_company_research_engine
 from research_analysis_orchestrator import plan_research_for_run, run_thesis_analysis
+from ux_guidance import workflow_steps, next_action, status_icon
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
 RUNS.mkdir(exist_ok=True)
 
-st.set_page_config(page_title="Personal AI Stock Researcher", layout="wide")
-st.title("Personal AI Stock Researcher")
-st.caption("Screen → understand → research → challenge → narrow. Every action and decision remains visible.")
+st.set_page_config(page_title="Personal AI Stock Researcher", page_icon="📈", layout="wide")
 
 DEFAULTS = {
     "run": None,
@@ -27,128 +25,156 @@ DEFAULTS = {
     "screen_queries": [],
     "strategies": [],
     "candidate_universe": [],
-    "manual_candidate_rows": [],
     "connection": None,
     "financial_assessments": [],
     "research_memories": [],
     "research_plan": {},
     "adversarial_results": [],
 }
-for k, v in DEFAULTS.items():
-    st.session_state.setdefault(k, v)
-
-with st.sidebar:
-    st.header("Research settings")
-    cdp = st.text_input("Logged-in Chrome CDP", "http://127.0.0.1:9222")
-    st.session_state.cdp_url = cdp
-    capital = st.number_input("Research capital (₹)", min_value=1000, value=100000, step=10000)
-    depth = st.selectbox("Research depth", ["Standard", "Deep"], index=1)
-    st.caption("Screener is the initial POC adapter. The research engines are designed so NSE/BSE/provider adapters can replace it later.")
-
-T_RESEARCH, T_STRATEGIES, T_COMPANIES, T_SETTINGS = st.tabs([
-    "Research", "Strategies", "Companies", "Settings / Debug"
-])
+for key, value in DEFAULTS.items():
+    st.session_state.setdefault(key, value)
 
 
-def active_run() -> ResearchRun:
+def active_run(depth="Deep", capital=100000) -> ResearchRun:
     if st.session_state.run is None:
         st.session_state.run = ResearchRun.create(depth, capital)
     return st.session_state.run
 
 
-def event_df(run: ResearchRun):
-    return pd.DataFrame([{
-        "Time": e.at[11:19] if len(e.at) >= 19 else e.at,
-        "Stage": e.stage,
-        "Status": e.status,
-        "Action": e.action,
-        "Company": e.company,
-        "What happened": e.message,
-    } for e in run.events])
+def reset_run(depth, capital):
+    st.session_state.run = ResearchRun.create(depth, capital)
+    for key in [
+        "screen_candidates", "screen_queries", "strategies", "candidate_universe",
+        "financial_assessments", "research_memories", "research_plan", "adversarial_results",
+    ]:
+        st.session_state[key] = [] if key not in {"research_plan"} else {}
 
 
-with T_RESEARCH:
-    st.subheader("Start / continue a research run")
-    a, b, c = st.columns([1, 1, 2])
-    if a.button("New research run", type="primary"):
-        st.session_state.run = ResearchRun.create(depth, capital)
-        st.session_state.strategies = []
-        st.session_state.candidate_universe = []
-        st.session_state.manual_candidate_rows = []
-        st.session_state.financial_assessments = []
-        st.session_state.research_memories = []
-        st.session_state.research_plan = {}
-        st.session_state.adversarial_results = []
-        st.success(f"Created {st.session_state.run.run_id}")
-    if b.button("Check Screener connection"):
+with st.sidebar:
+    st.header("Navigation & global settings")
+    st.caption("Use this sidebar for app-wide settings and specialist workspaces. The main page below is the normal step-by-step workflow.")
+
+    st.page_link("main.py", label="🏠 Guided Research", help="The normal end-to-end workflow")
+    st.page_link("pages/5_User_Guide.py", label="📘 User Guide", help="Start here if this is your first run")
+    st.page_link("pages/3_Research_Evidence.py", label="🔎 Research Evidence", help="Inspect sources, evidence, gaps and dossiers")
+    st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="⚖️ Deep Research & Thesis Challenge", help="Research-depth plan and Bull/Bear analysis")
+    st.page_link("pages/1_Operator_Control.py", label="🎛️ Operator Control", help="Tune strategies and override stage selections")
+    st.page_link("pages/2_Runtime_Settings.py", label="⚙️ Runtime Settings", help="Screener request delay and runtime behavior")
+
+    st.divider()
+    st.subheader("Global settings")
+    cdp = st.text_input("Logged-in Chrome CDP", "http://127.0.0.1:9222", help="Local Chrome debugging endpoint used by the Screener POC adapter.")
+    st.session_state.cdp_url = cdp
+    capital = st.number_input("Research capital (₹)", min_value=1000, value=100000, step=10000)
+    depth = st.selectbox("Research depth", ["Standard", "Deep"], index=1)
+    st.caption("These settings affect the whole research run. Screener is only the current POC data adapter.")
+
+run = active_run(depth, capital)
+
+st.title("📈 Personal AI Stock Researcher")
+st.caption("One guided workflow: define what you seek → screen → verify financials → research evidence → challenge the thesis.")
+
+steps = workflow_steps(run, st.session_state)
+next_step, next_text = next_action(steps)
+
+c1, c2, c3 = st.columns([2, 2, 3])
+with c1:
+    st.metric("Run", run.run_id.split("-")[-1])
+with c2:
+    st.metric("Current status", run.status.replace("_", " ").title())
+with c3:
+    if next_step:
+        st.info(f"**Next recommended action — Step {next_step.number}: {next_step.title}**\n\n{next_text}")
+    else:
+        st.success(next_text)
+
+st.markdown("### Your research journey")
+journey_cols = st.columns(6)
+for col, step in zip(journey_cols, steps):
+    col.markdown(f"**{status_icon(step.status)} {step.number}. {step.title}**")
+    col.caption(step.detail)
+
+with st.expander("What do the sidebar workspaces mean?", expanded=False):
+    st.markdown(
+        """
+- **Guided Research** — the normal flow. Stay here for most runs.
+- **User Guide** — plain-language explanation of the product and first-run walkthrough.
+- **Research Evidence** — detailed source attempts, documents, evidence, open questions and company dossiers.
+- **Deep Research & Thesis Challenge** — research budgets, depth allocation, Bull/Bear arguments, contradictions and fragility.
+- **Operator Control** — optional advanced control over strategies, candidates and overrides.
+- **Runtime Settings** — technical/runtime controls such as Screener request delay.
+
+You do **not** need to visit every page. The guided workflow tells you when a specialist workspace is useful.
+"""
+    )
+
+st.divider()
+
+# STEP 0 / run controls
+r1, r2 = st.columns([1, 4])
+if r1.button("Start new research run"):
+    reset_run(depth, capital)
+    st.rerun()
+r2.caption("Start a new run only when you want to clear the current workflow state. Strategy profiles can be exported/imported separately from Operator Control.")
+
+# STEP 1
+step = steps[0]
+with st.expander(f"{status_icon(step.status)} Step 1 — Connect & prepare strategies", expanded=step.status in {"NEXT", "IN_PROGRESS"}):
+    st.write("**Goal:** teach the researcher what kinds of companies you are interested in. You can learn this from historical Screener screens or import your existing screen file.")
+    a, b = st.columns([1, 2])
+    if a.button("Check Screener connection"):
         try:
             with ScreenerAdapter(cdp) as adapter:
                 st.session_state.connection = adapter.connection_status()
-            active_run().log("SYSTEM", "SCREENER_CONNECTION", "Connected to the local Screener browser session.", details=st.session_state.connection)
+            run.log("SYSTEM", "SCREENER_CONNECTION", "Connected to the local Screener browser session.", details=st.session_state.connection)
+            run.save(RUNS)
         except Exception as exc:
             st.session_state.connection = {"connected": False, "logged_in": False, "error": str(exc)}
-            active_run().log("SYSTEM", "SCREENER_CONNECTION_FAILED", str(exc), status="ERROR")
+            run.log("SYSTEM", "SCREENER_CONNECTION_FAILED", str(exc), status="ERROR")
+            run.save(RUNS)
     conn = st.session_state.connection
     if conn:
-        if conn.get("connected"):
-            c.success(f"Screener browser connected · logged-in detection: {'yes' if conn.get('logged_in') else 'uncertain'}")
-        else:
-            c.error(conn.get("error", "Connection failed"))
+        (b.success if conn.get("connected") else b.error)(
+            f"Connected · login detection: {'yes' if conn.get('logged_in') else 'uncertain'}" if conn.get("connected") else conn.get("error", "Connection failed")
+        )
 
-    run = active_run()
-    st.markdown("### 1. Learn/select the screening methodology")
-    source_mode = st.radio(
-        "Historical screen source",
-        ["Logged-in Screener", "Import historical screens (fallback/debug)"],
-        horizontal=True,
-    )
-
+    source_mode = st.radio("Methodology source", ["Logged-in Screener", "Import historical screens"], horizontal=True)
     screens_to_analyze = []
     if source_mode == "Logged-in Screener":
         explore = st.text_input("Screen discovery page", "https://www.screener.in/explore/")
-        d1, d2 = st.columns(2)
-        max_pages = d1.number_input("Discovery pages", 1, 100, 15)
-        max_screens = d2.number_input("Max screens (0 = all)", 0, 10000, 0)
+        p1, p2 = st.columns(2)
+        max_pages = p1.number_input("Discovery pages", 1, 100, 15)
+        max_screens = p2.number_input("Max screens (0 = all)", 0, 10000, 0)
         if st.button("Discover screens/users"):
-            bar = st.progress(0); message = st.empty()
             try:
-                def discover_progress(i, n, item):
-                    bar.progress(i/max(n,1)); message.write(f"Discovering {i}/{n}: {item.get('title') or item.get('url')}")
-                st.session_state.screen_candidates = ScreenerAdapter.discover_screens(
-                    cdp, explore, int(max_pages), int(max_screens), discover_progress
-                )
+                st.session_state.screen_candidates = ScreenerAdapter.discover_screens(cdp, explore, int(max_pages), int(max_screens), None)
                 run.log("STRATEGY", "SCREEN_DISCOVERY", f"Discovered {len(st.session_state.screen_candidates)} historical screen candidates.")
             except Exception as exc:
-                st.error(str(exc)); run.log("STRATEGY", "SCREEN_DISCOVERY_FAILED", str(exc), status="ERROR")
-
+                st.error(str(exc))
         candidates = st.session_state.screen_candidates
-        detected = owners(candidates)
         if candidates:
+            detected = owners(candidates)
             selected_owners = st.multiselect("Choose Screener user(s)", detected, default=detected[:1] if detected else [])
             matched = filter_owners(candidates, selected_owners) if selected_owners else []
             st.caption(f"{len(matched)} screens match the selected user(s).")
             if matched and st.button("Fetch selected screen queries"):
-                bar = st.progress(0); message = st.empty()
                 try:
-                    def qprogress(i,n,item):
-                        bar.progress(i/max(n,1)); message.write(f"Fetching query {i}/{n}: {item.get('title') or item.get('url')}")
-                    crawled = ScreenerAdapter.fetch_screen_queries(cdp, [x["url"] for x in matched], qprogress)
+                    crawled = ScreenerAdapter.fetch_screen_queries(cdp, [x["url"] for x in matched], None)
                     original = {x["url"]: x for x in matched}
                     for item in crawled:
                         src = original.get(item.get("url"), {})
                         item["owner"] = item.get("owner") or src.get("owner", "")
                         item["title"] = item.get("title") or src.get("title", "")
                     st.session_state.screen_queries = crawled
-                    run.log("STRATEGY", "SCREEN_QUERY_FETCH", f"Fetched {sum(bool(x.get('query')) for x in crawled)} usable queries from {len(crawled)} screens.")
                 except Exception as exc:
-                    st.error(str(exc)); run.log("STRATEGY", "SCREEN_QUERY_FETCH_FAILED", str(exc), status="ERROR")
+                    st.error(str(exc))
             screens_to_analyze = st.session_state.screen_queries
     else:
-        upload = st.file_uploader("Historical Screener screens CSV/XLSX", type=["csv","xlsx","xls"], key="historical_screens")
+        upload = st.file_uploader("Historical Screener screens CSV/XLSX", type=["csv", "xlsx", "xls"])
         if upload:
             try:
                 screens_to_analyze = read_uploaded_file(upload)
-                st.info(f"Loaded {len(screens_to_analyze)} historical screens. This is a fallback/debug path.")
+                st.success(f"Loaded {len(screens_to_analyze)} historical screens.")
             except Exception as exc:
                 st.error(str(exc))
 
@@ -156,240 +182,159 @@ with T_RESEARCH:
         try:
             st.session_state.strategies = ResearchService(run, RUNS).analyze_screens(screens_to_analyze)
             st.success(f"Prepared {len(st.session_state.strategies)} master strategies.")
+            st.page_link("pages/1_Operator_Control.py", label="Optional: review/tune strategy philosophy before screening →")
         except Exception as exc:
-            st.error(str(exc)); run.log("STRATEGY", "METHODOLOGY_FAILED", str(exc), status="ERROR")
+            st.error(str(exc))
 
-    st.markdown("### 2. Run enabled strategies")
+# STEP 2
+steps = workflow_steps(run, st.session_state)
+step = steps[1]
+with st.expander(f"{status_icon(step.status)} Step 2 — Screen the market", expanded=step.status == "NEXT"):
     strategies = st.session_state.strategies or run.strategies
-    if strategies:
-        labels = {s["id"]: f"{s['id']} · {s['name']}" for s in strategies}
-        enabled = st.multiselect("Enabled strategies", list(labels), default=list(labels), format_func=lambda x: labels[x])
-        st.caption("The app runs each query in your logged-in browser, crawls result pages, and captures exact company links plus every visible result-table metric. No Screener Pro Excel export is required for this path.")
-        if st.button("Run screening & build candidate universe", type="primary"):
-            bar = st.progress(0); message = st.empty()
-            try:
-                def screen_progress(si, sn, sid, name, page_no, total_rows):
-                    bar.progress((si-1 + min(page_no,5)/5)/max(sn,1)); message.write(f"{sid} · {name}: page {page_no}, {total_rows} rows captured")
-                universe = ResearchService(run, RUNS).execute_strategies(cdp, set(enabled), screen_progress)
-                st.session_state.candidate_universe = universe
-                st.success(f"Candidate universe ready: {len(universe)} unique companies.")
-            except Exception as exc:
-                st.error(str(exc)); run.log("SCREENING", "SCREENING_FAILED", str(exc), status="ERROR")
-
-    st.markdown("### 3. Analyze candidate financials")
-    universe = st.session_state.candidate_universe
-    if universe:
-        st.caption("No additional financial spreadsheet is required. Exact company links from screening are used first; missing data is logged as a retry rather than silently treated as neutral.")
-        if st.button("Analyze financials automatically", type="primary"):
-            bar=st.progress(0); message=st.empty()
-            try:
-                def fprogress(i,n,company,status):
-                    bar.progress(i/max(n,1)); message.write(f"{i}/{n} {company} — {status}")
-                st.session_state.financial_assessments = ResearchService(run, RUNS).collect_financials(cdp, universe, fprogress)
-                st.success("Financial assessment complete. Decisions are coverage-aware; low-data companies are routed to DATA_RETRY instead of receiving a confident pass.")
-            except Exception as exc:
-                st.error(str(exc)); run.log("FINANCIAL","FINANCIAL_STAGE_FAILED",str(exc),status="ERROR")
-
-    st.markdown("### 4. Research surviving companies")
-    eligible_companies = [
-        c for c in run.companies.values()
-        if (c.financial_assessment or {}).get("effective_research_decision", (c.financial_assessment or {}).get("decision"))
-        in {"ADVANCE", "WATCHLIST", "USER_INCLUDE"}
-    ]
-    if eligible_companies:
-        state_counts = {}
-        for company in eligible_companies:
-            state = company.research_state or "NOT_RESEARCHED"
-            state_counts[state] = state_counts.get(state, 0) + 1
-        st.caption(
-            f"{len(eligible_companies)} companies are approved for company research. "
-            f"Current research states: {state_counts}."
-        )
-        if st.button("Research companies automatically"):
-            bar=st.progress(0); message=st.empty()
-            try:
-                def rprogress(i,n,company,status):
-                    bar.progress(i/max(n,1)); message.write(f"{i}/{n} {company} — {status}")
-                st.session_state.research_memories = run_company_research_engine(
-                    run,
-                    cdp,
-                    company_names=[c.company for c in eligible_companies],
-                    use_llm=False,
-                    max_sources_per_type=2,
-                    min_source_score=45,
-                    progress=rprogress,
-                )
-                run.save(RUNS)
-                st.success(f"Company research complete. States: {run.stage_summary.get('research', {}).get('states', {})}")
-            except Exception as exc:
-                st.error(str(exc)); run.log("RESEARCH","RESEARCH_STAGE_FAILED",str(exc),status="ERROR")
-        st.page_link("pages/3_Research_Evidence.py", label="Open detailed Research Evidence workspace →")
-
-    st.markdown("### 5. Allocate deeper research")
-    researched = [c for c in run.companies.values() if c.research_state not in {"", "NOT_RESEARCHED"} or c.evidence]
-    if researched:
-        st.caption(
-            "Research depth determines where additional analyst effort should be spent. It is an attention-allocation decision, not investment conviction."
-        )
-        if st.button("Plan progressive deep research"):
-            try:
-                budgets={"STRUCTURED":100,"TARGETED":50,"DEEP":25,"ADVERSARIAL":15} if depth=="Deep" else {"STRUCTURED":60,"TARGETED":30,"DEEP":15,"ADVERSARIAL":8}
-                st.session_state.research_plan = plan_research_for_run(run, budgets)
-                run.save(RUNS)
-                st.success(f"Research-depth plan ready: {st.session_state.research_plan.get('counts',{})}")
-            except Exception as exc:
-                st.error(str(exc)); run.log("RESEARCH_DEPTH","PLANNING_FAILED",str(exc),status="ERROR")
-
-    if st.session_state.research_plan:
-        depth_counts = st.session_state.research_plan.get("counts", {})
-        cols = st.columns(5)
-        for idx, stage in enumerate(["ADVERSARIAL","DEEP","TARGETED","STRUCTURED","SOURCE_GAP"]):
-            cols[idx].metric(stage.replace("_", " ").title(), depth_counts.get(stage, 0))
-        st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="Open Deep Research & Thesis Challenge workspace →")
-
-    st.markdown("### 6. Challenge the strongest researched theses")
-    if st.session_state.research_plan:
-        ready=[x.get("company") for x in st.session_state.research_plan.get("rows",[]) if x.get("stage")=="ADVERSARIAL"]
-        st.caption(
-            f"{len(ready)} companies currently pass the automatic evidence gate for independent Bull/Bear thesis analysis. "
-            "The output is a research state, not a buy/sell call."
-        )
-        if ready and st.button("Run Bull/Bear thesis challenge"):
-            bar=st.progress(0); message=st.empty()
-            try:
-                def aprogress(i,n,company):
-                    bar.progress(i/max(n,1)); message.write(f"{i}/{n} challenging {company}")
-                st.session_state.adversarial_results = run_thesis_analysis(
-                    run,
-                    st.session_state.research_plan,
-                    company_names=ready,
-                    progress=aprogress,
-                )
-                run.save(RUNS)
-                st.success(f"Bull/Bear thesis analysis complete for {len(st.session_state.adversarial_results)} companies.")
-            except Exception as exc:
-                st.error(str(exc)); run.log("ADVERSARIAL","ADVERSARIAL_FAILED",str(exc),status="ERROR")
-
-    if st.session_state.adversarial_results:
-        adf = pd.DataFrame([{
-            "Company": r.get("company"),
-            "Research state": (r.get("classification") or {}).get("thesis_status"),
-            "Thesis balance": (r.get("classification") or {}).get("thesis_balance"),
-            "Fragility": (r.get("classification") or {}).get("fragility_score"),
-            "Adversarial readiness": (r.get("classification") or {}).get("adversarial_readiness"),
-        } for r in st.session_state.adversarial_results])
-        st.dataframe(adf, use_container_width=True, hide_index=True)
-        st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="Inspect full Bull/Bear evidence and contradictions →")
-
-    st.markdown("### Research log")
-    if run.events:
-        st.dataframe(event_df(run), use_container_width=True, hide_index=True)
-    else:
-        st.info("Actions performed by the researcher will appear here with their purpose and outcome.")
-
-with T_STRATEGIES:
-    st.subheader("Your methodology and master strategies")
-    strategies = st.session_state.strategies or active_run().strategies
     if not strategies:
-        st.info("Analyze historical screens first.")
-    for s in strategies:
-        with st.expander(f"{s.get('id')} · {s.get('name')}"):
-            st.write(s.get("purpose", ""))
-            st.code(s.get("hard_query", ""))
-            st.caption(f"Methodology support: {s.get('evidence_confidence', 0)}/100. This is methodology support, not expected return.")
+        st.info("Complete Step 1 first.")
+    else:
+        st.write("**Goal:** execute your enabled strategies and combine all matches into one deduplicated candidate universe.")
+        labels = {s["id"]: f"{s['id']} · {s['name']}" for s in strategies}
+        enabled = st.multiselect("Strategies to run", list(labels), default=[s["id"] for s in strategies if s.get("enabled", True)], format_func=lambda x: labels[x])
+        st.caption("Want fewer/more results? Tune the philosophy/query and preview it in Operator Control before running the full screen.")
+        st.page_link("pages/1_Operator_Control.py", label="Tune or preview strategies →")
+        if st.button("Run screening & build candidate universe", type="primary"):
+            bar, message = st.progress(0), st.empty()
+            try:
+                def progress(si, sn, sid, name, page_no, total_rows):
+                    bar.progress((si - 1 + min(page_no, 5) / 5) / max(sn, 1))
+                    message.write(f"{sid} · {name}: page {page_no}, {total_rows} rows captured")
+                st.session_state.candidate_universe = ResearchService(run, RUNS).execute_strategies(cdp, set(enabled), progress)
+                st.success(f"Candidate universe ready: {len(st.session_state.candidate_universe)} unique companies.")
+                st.page_link("pages/1_Operator_Control.py", label="Optional: review/prune candidates before financial analysis →")
+            except Exception as exc:
+                st.error(str(exc))
 
-with T_COMPANIES:
-    st.subheader("Candidate companies")
+# STEP 3
+steps = workflow_steps(run, st.session_state)
+step = steps[2]
+with st.expander(f"{status_icon(step.status)} Step 3 — Check financial quality", expanded=step.status == "NEXT"):
     universe = st.session_state.candidate_universe
     if not universe:
-        st.info("Run screening first. Candidate Universe = all unique companies that passed at least one enabled strategy.")
+        st.info("Complete Step 2 first.")
     else:
-        st.metric("Unique candidates", len(universe))
-        if st.session_state.financial_assessments:
-            fdf=pd.DataFrame([{
-                "Company":x.get("company"),"Decision":x.get("decision"),"Evidence coverage %":x.get("data_confidence"),
-                "Growth":(x.get("labels") or {}).get("growth"),"Capital efficiency":(x.get("labels") or {}).get("capital_efficiency"),
-                "Balance sheet":(x.get("labels") or {}).get("balance_sheet"),"Cash generation":(x.get("labels") or {}).get("cash_generation"),
-                "Valuation":(x.get("labels") or {}).get("valuation"),"Why":x.get("decision_reason")
-            } for x in st.session_state.financial_assessments])
-            st.markdown("### Financial research decisions")
-            st.dataframe(fdf,use_container_width=True,hide_index=True)
-            st.caption("Numeric scores are internal ordering aids. The user-facing decision is driven by evidence coverage, hard risk gates, qualitative dimensions and an explicit reason.")
+        st.write(f"**Goal:** collect multi-period financials for the {len(universe)} selected candidates and identify which names deserve expensive company research.")
+        st.caption("The system uses exact company links where possible. Missing data becomes DATA_RETRY; it is not treated as neutral evidence.")
+        if st.button("Analyze financials automatically", type="primary"):
+            bar, message = st.progress(0), st.empty()
+            try:
+                def fprogress(i, n, company, status):
+                    bar.progress(i / max(n, 1)); message.write(f"{i}/{n} · {company} · {status}")
+                st.session_state.financial_assessments = ResearchService(run, RUNS).collect_financials(cdp, universe, fprogress)
+                counts = run.stage_summary.get("financial", {}).get("decisions", {})
+                st.success(f"Financial analysis complete: {counts}")
+                st.page_link("pages/1_Operator_Control.py", label="Optional: review/override which companies continue to research →")
+            except Exception as exc:
+                st.error(str(exc))
+
+# STEP 4
+steps = workflow_steps(run, st.session_state)
+step = steps[3]
+with st.expander(f"{status_icon(step.status)} Step 4 — Research the business", expanded=step.status == "NEXT"):
+    eligible = [c for c in run.companies.values() if (c.financial_assessment or {}).get("effective_research_decision", (c.financial_assessment or {}).get("decision")) in {"ADVANCE", "WATCHLIST", "USER_INCLUDE"}]
+    if not eligible:
+        st.info("Complete financial analysis and approve companies for research first.")
+    else:
+        st.write(f"**Goal:** research {len(eligible)} approved companies using source documents, then expose what is known and what remains unknown.")
+        states = {}
+        for c in eligible:
+            states[c.research_state or "NOT_RESEARCHED"] = states.get(c.research_state or "NOT_RESEARCHED", 0) + 1
+        st.write("Current research states:", states)
+        if st.button("Research approved companies", type="primary"):
+            bar, message = st.progress(0), st.empty()
+            try:
+                def rprogress(i, n, company, stage):
+                    bar.progress(i / max(n, 1)); message.write(f"{i}/{n} · {company} · {stage.replace('_', ' ')}")
+                st.session_state.research_memories = run_company_research_engine(
+                    run, cdp, company_names=[c.company for c in eligible], use_llm=False,
+                    max_sources_per_type=2, min_source_score=45, progress=rprogress,
+                )
+                run.save(RUNS)
+                st.success(f"Company research complete: {run.stage_summary.get('research', {}).get('states', {})}")
+            except Exception as exc:
+                st.error(str(exc))
+        st.page_link("pages/3_Research_Evidence.py", label="Inspect sources, findings and open questions →")
+
+# STEP 5
+steps = workflow_steps(run, st.session_state)
+step = steps[4]
+with st.expander(f"{status_icon(step.status)} Step 5 — Allocate deeper research", expanded=step.status == "NEXT"):
+    researched = [c for c in run.companies.values() if c.research_state not in {"", "NOT_RESEARCHED"} or c.evidence]
+    if not researched:
+        st.info("Complete Step 4 first.")
+    else:
+        st.write("**Goal:** spend progressively more analyst effort on fewer companies. This is a research-attention budget, not an investment ranking.")
+        default_budgets = {"STRUCTURED": 100, "TARGETED": 50, "DEEP": 25, "ADVERSARIAL": 15} if depth == "Deep" else {"STRUCTURED": 60, "TARGETED": 30, "DEEP": 15, "ADVERSARIAL": 8}
+        if st.button("Create deep-research plan", type="primary"):
+            try:
+                st.session_state.research_plan = plan_research_for_run(run, default_budgets)
+                run.save(RUNS)
+                st.success(f"Plan ready: {st.session_state.research_plan.get('counts', {})}")
+            except Exception as exc:
+                st.error(str(exc))
         if st.session_state.research_plan:
-            st.markdown("### Research-depth funnel")
-            pdf=pd.DataFrame(st.session_state.research_plan.get("rows",[]))
-            show=[c for c in ["company","stage","research_state","reason","mission_coverage","document_coverage","evidence_quality","research_readiness","risk_items","open_questions"] if c in pdf.columns]
-            st.dataframe(pdf[show],use_container_width=True,hide_index=True)
+            counts = st.session_state.research_plan.get("counts", {})
+            st.dataframe(pd.DataFrame([{"Stage": k.replace("_", " ").title(), "Companies": v} for k, v in counts.items()]), use_container_width=True, hide_index=True)
+        st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="Review budgets and every company's depth decision →")
 
-        rows = []
-        for x in universe:
-            rows.append({
-                "Company": x.get("company"), "Exact Screener URL": x.get("url"),
-                "Strategies matched": x.get("strategy_count"), "Strategy IDs": x.get("strategies"),
-                "Research priority (internal)": x.get("research_priority_score"),
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-        chosen = st.selectbox("Inspect company", [x.get("company") for x in universe])
-        item = next(x for x in universe if x.get("company") == chosen)
-        st.write("**Why it is here:**", item.get("strategy_names") or item.get("strategies"))
-        st.write("**Exact Screener company URL:**", item.get("url") or "Not captured — resolver fallback would be required")
-        if item.get("snapshot"):
-            st.markdown("**Metrics captured directly from the screen result**")
-            st.dataframe(pd.DataFrame([item["snapshot"]]), use_container_width=True, hide_index=True)
+# STEP 6
+steps = workflow_steps(run, st.session_state)
+step = steps[5]
+with st.expander(f"{status_icon(step.status)} Step 6 — Challenge the thesis", expanded=step.status == "NEXT"):
+    plan = st.session_state.research_plan or {}
+    ready = [r.get("company") for r in plan.get("rows", []) if r.get("stage") == "ADVERSARIAL"]
+    if not ready:
+        st.info("No company currently passes the evidence gate for Bull/Bear analysis. Review the deep-research plan and unresolved evidence gaps.")
+    else:
+        st.write(f"**Goal:** independently challenge {len(ready)} evidence-ready companies. This is a thesis stress test, not a buy/sell recommendation.")
+        if st.button("Run Bull/Bear thesis challenge", type="primary"):
+            bar, message = st.progress(0), st.empty()
+            try:
+                def aprogress(i, n, company):
+                    bar.progress(i / max(n, 1)); message.write(f"{i}/{n} · challenging {company}")
+                st.session_state.adversarial_results = run_thesis_analysis(run, plan, company_names=ready, progress=aprogress)
+                run.save(RUNS)
+                st.success(f"Thesis challenge complete for {len(st.session_state.adversarial_results)} companies.")
+            except Exception as exc:
+                st.error(str(exc))
+        if st.session_state.adversarial_results:
+            rows = []
+            for result in st.session_state.adversarial_results:
+                c = result.get("classification") or {}
+                rows.append({
+                    "Company": result.get("company"),
+                    "Research state": c.get("thesis_status"),
+                    "Thesis balance": c.get("thesis_balance"),
+                    "Fragility": c.get("fragility_score"),
+                    "Adversarial readiness": c.get("adversarial_readiness"),
+                })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="Inspect Bull/Bear evidence, contradictions and unresolved questions →")
 
-        cr=active_run().companies.get(chosen.strip().casefold())
-        if cr:
-            st.markdown("### Company research dossier")
-            if cr.financial_assessment:
-                fa=cr.financial_assessment
-                st.write(f"**Financial decision:** {fa.get('decision')} — {fa.get('decision_reason','')}")
-                st.write(f"**Financial evidence coverage:** {fa.get('data_confidence',0)}%")
-                labels=fa.get('labels',{})
-                if labels: st.dataframe(pd.DataFrame([labels]),use_container_width=True,hide_index=True)
-                if fa.get('warnings'): st.warning("; ".join(fa.get('warnings',[])))
-            st.write(f"**Research state:** {cr.research_state}")
-            st.write(f"**Research documents collected:** {len(cr.documents)}")
-            st.write(f"**Evidence items extracted:** {len(cr.evidence)}")
-            if cr.research_dossier:
-                st.write(f"**Fundamental mission coverage:** {cr.research_dossier.get('mission_coverage',0)}%")
-            if cr.research_questions:
-                st.markdown("**Open research questions / missing evidence**")
-                for q in cr.research_questions: st.write(f"- {q.get('question')} — {q.get('reason')}")
-            if cr.evidence:
-                st.markdown("**What the research found**")
-                edf=pd.DataFrame([{
-                    "Theme":e.get('theme'),"Type":e.get('kind'),"Finding":e.get('claim') or e.get('excerpt'),
-                    "Document":e.get('document_title'),"Page":e.get('page'),"Evidence ID":e.get('evidence_id')
-                } for e in cr.evidence[:100]])
-                st.dataframe(edf,use_container_width=True,hide_index=True)
-            if cr.bull_case or cr.bear_case:
-                c1,c2=st.columns(2)
-                with c1:
-                    st.markdown("#### Bull case")
-                    st.write(cr.bull_case.get('summary',''))
-                    for p in cr.bull_case.get('points',[]): st.write(f"- {p.get('point')}")
-                with c2:
-                    st.markdown("#### Bear / forensic case")
-                    st.write(cr.bear_case.get('summary',''))
-                    for p in cr.bear_case.get('points',[]): st.write(f"- {p.get('point')}")
-            if cr.contradiction_review:
-                st.markdown("#### Neutral challenge")
-                st.write(cr.contradiction_review.get('challenge_summary',''))
-            if cr.decisions:
-                st.markdown("**Decision history**")
-                st.dataframe(pd.DataFrame(cr.decisions),use_container_width=True,hide_index=True)
+st.divider()
+st.markdown("### Need more detail?")
+q1, q2, q3 = st.columns(3)
+with q1:
+    st.page_link("pages/5_User_Guide.py", label="📘 First-time user guide")
+with q2:
+    st.page_link("pages/3_Research_Evidence.py", label="🔎 Company research dossiers")
+with q3:
+    st.page_link("pages/1_Operator_Control.py", label="🎛️ Advanced operator controls")
 
-with T_SETTINGS:
-    st.subheader("Settings / Debug")
-    st.write("Normal operation should not require files. These controls exist for recovery/testing.")
-    manual = st.file_uploader("Import strategy result CSV/XLSX", type=["csv","xlsx","xls"], key="debug_result")
-    sid = st.text_input("Strategy ID", "S1")
-    if manual and st.button("Debug: import result file"):
-        rows = read_result_file(manual, sid)
-        st.session_state.manual_candidate_rows.extend(rows)
-        st.success(f"Imported {len(rows)} rows.")
-    if st.session_state.manual_candidate_rows and st.button("Debug: build universe from imports"):
-        strategies = st.session_state.strategies or [{"id": sid, "name": "Imported", "evidence_confidence": 50}]
-        st.session_state.candidate_universe = build_candidate_universe(st.session_state.manual_candidate_rows, strategies)
-        st.success(f"Built {len(st.session_state.candidate_universe)} unique candidates.")
-    st.caption("Debug XLSX imports preserve company-cell hyperlinks when present; normal live-Screener runs capture exact hrefs directly from the result table.")
+with st.expander("Research activity log", expanded=False):
+    if run.events:
+        st.dataframe(pd.DataFrame([{
+            "Time": e.at[11:19] if len(e.at) >= 19 else e.at,
+            "Stage": e.stage,
+            "Status": e.status,
+            "Company": e.company,
+            "What happened": e.message,
+        } for e in run.events]), use_container_width=True, hide_index=True)
+    else:
+        st.info("Research actions will appear here as the run progresses.")
