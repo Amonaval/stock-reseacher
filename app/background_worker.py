@@ -88,6 +88,7 @@ def _dispatch(job_id: str, job: dict) -> dict:
 
     if kind == "deep_gap_research":
         from deep_gap_research import resolve_research_gaps
+        from research_analysis_orchestrator import plan_research_for_run
         names = p.get("company_names") or []
         def progress(i, n, company, stage):
             _progress(job_id, i / max(n, 1), f"{i}/{n} {company} — {stage.replace('_', ' ')}")
@@ -95,8 +96,15 @@ def _dispatch(job_id: str, job: dict) -> dict:
             run, p["cdp_url"], company_names=names,
             use_llm=bool(p.get("use_llm", False)), progress=progress,
         )
+        _progress(job_id, 0.95, "Rebuilding deep-research plan from the expanded evidence")
+        plan = plan_research_for_run(run, p.get("budgets") or None)
         run.save(RUNS_DIR)
-        return {"session_key": "deep_gap_result", "value": result}
+        return {
+            "session_updates": {
+                "deep_gap_result": result,
+                "research_plan": plan,
+            }
+        }
 
     if kind == "research_plan":
         from research_analysis_orchestrator import plan_research_for_run
