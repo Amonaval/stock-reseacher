@@ -49,13 +49,14 @@ def test_general_earnings_uses_normalized_eps_and_benchmark_anchor():
     assert result["valuation_inputs"]["multiple_anchor"]["base_multiple"] == 18
     assert result["scenarios"]["base"]["fair_value"] == 90
     assert result["scenarios"]["base"]["upside_downside_pct"] == -10.0
+    assert result["price_context"] == "CAPTURED_DURING_FINANCIAL_RESEARCH_NOT_LIVE"
 
 
-def test_cyclical_uses_longer_normalized_earnings_history():
+def test_cyclical_uses_full_cycle_history_including_loss_years():
     company = _ready(CompanyResearch(company="Example Steel Ltd"))
     company.evidence = [{"claim": "Steel commodity cycle remains volatile", "theme": "risk"}]
     company.financial_history = [
-        {"year": "Mar 2022", "eps": 2},
+        {"year": "Mar 2022", "eps": -4},
         {"year": "Mar 2023", "eps": 9},
         {"year": "Mar 2024", "eps": 3},
         {"year": "Mar 2025", "eps": 11},
@@ -68,6 +69,7 @@ def test_cyclical_uses_longer_normalized_earnings_history():
     assert result["status"] == "VALUED"
     assert result["valuation_inputs"]["eps_basis"]["periods_used"] == 5
     assert result["valuation_inputs"]["eps_basis"]["normalized_eps"] == 5
+    assert "including weak/loss years" in result["valuation_inputs"]["eps_basis"]["method"]
     assert result["scenarios"]["bear"]["multiple"] == 6.5
 
 
