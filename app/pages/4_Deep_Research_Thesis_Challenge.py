@@ -4,29 +4,25 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from navigation import render_navigation
 from research_analysis_orchestrator import plan_research_for_run, run_thesis_analysis
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = ROOT / "runs"
 RUNS.mkdir(exist_ok=True)
 
-st.set_page_config(page_title="Deep Research & Thesis Challenge · Personal AI Stock Researcher", layout="wide")
-st.title("Deep Research & Thesis Challenge")
-st.caption(
-    "Allocate research effort transparently, inspect why each company is at its current depth, "
-    "and independently challenge evidence-ready theses. No buy/sell recommendation is produced here."
-)
+st.set_page_config(page_title="Deep Research & Thesis Challenge · Personal AI Stock Researcher", page_icon="⚖️", layout="wide")
+render_navigation()
+
+st.title("⚖️ Deep Research & Thesis Challenge")
+st.caption("Use this workspace after company research. First allocate research depth, then challenge only evidence-ready theses.")
+st.info("**Two jobs only:** (1) decide where more research effort belongs, (2) stress-test the strongest researched theses. This page does not produce buy/sell recommendations.")
 
 run = st.session_state.get("run")
 if run is None:
-    st.info("Start a research run from the main Research page first.")
+    st.info("Start a research run from Guided Research first.")
+    st.page_link("main.py", label="← Return to Guided Research")
     st.stop()
-
-st.markdown("## 1. Deep-research budget")
-st.write(
-    "Budgets control how many companies receive increasingly expensive analysis. "
-    "They do not represent conviction or expected return. Companies outside a budget remain queued rather than disappearing."
-)
 
 current_plan = st.session_state.get("research_plan") or {}
 existing_budgets = current_plan.get("budgets") or (
@@ -35,170 +31,120 @@ existing_budgets = current_plan.get("budgets") or (
     else {"STRUCTURED": 60, "TARGETED": 30, "DEEP": 15, "ADVERSARIAL": 8}
 )
 
-b1, b2, b3, b4 = st.columns(4)
-structured_budget = b1.number_input("Structured", min_value=0, max_value=1000, value=int(existing_budgets.get("STRUCTURED", 100)))
-targeted_budget = b2.number_input("Targeted", min_value=0, max_value=1000, value=int(existing_budgets.get("TARGETED", 50)))
-deep_budget = b3.number_input("Deep", min_value=0, max_value=1000, value=int(existing_budgets.get("DEEP", 25)))
-adversarial_budget = b4.number_input("Bull/Bear", min_value=0, max_value=1000, value=int(existing_budgets.get("ADVERSARIAL", 15)))
+st.markdown("## A. Allocate deeper research")
+st.write("Budgets control analyst attention. A company that passes a gate but falls outside the current budget stays in **RESEARCH_QUEUE**—it is not discarded.")
 
-if st.button("Allocate research depth", type="primary"):
-    budgets = {
-        "STRUCTURED": int(structured_budget),
-        "TARGETED": int(targeted_budget),
-        "DEEP": int(deep_budget),
-        "ADVERSARIAL": int(adversarial_budget),
-    }
-    plan = plan_research_for_run(run, budgets)
-    st.session_state.research_plan = plan
-    run.save(RUNS)
-    st.success(f"Research-depth plan created: {plan.get('counts', {})}")
-    current_plan = plan
+with st.expander("Adjust research-depth budgets", expanded=not bool(current_plan)):
+    b1, b2, b3, b4 = st.columns(4)
+    structured_budget = b1.number_input("Structured", min_value=0, max_value=1000, value=int(existing_budgets.get("STRUCTURED", 100)))
+    targeted_budget = b2.number_input("Targeted", min_value=0, max_value=1000, value=int(existing_budgets.get("TARGETED", 50)))
+    deep_budget = b3.number_input("Deep", min_value=0, max_value=1000, value=int(existing_budgets.get("DEEP", 25)))
+    adversarial_budget = b4.number_input("Bull/Bear", min_value=0, max_value=1000, value=int(existing_budgets.get("ADVERSARIAL", 15)))
+    if st.button("Create / update research-depth plan", type="primary"):
+        budgets = {
+            "STRUCTURED": int(structured_budget),
+            "TARGETED": int(targeted_budget),
+            "DEEP": int(deep_budget),
+            "ADVERSARIAL": int(adversarial_budget),
+        }
+        plan = plan_research_for_run(run, budgets)
+        st.session_state.research_plan = plan
+        run.save(RUNS)
+        st.success(f"Plan created: {plan.get('counts', {})}")
 
 plan = st.session_state.get("research_plan") or current_plan
-
 if not plan:
-    st.info(
-        "No deep-research plan exists yet. Run company research first, then allocate research depth here. "
-        "The planner uses persistent company dossiers, so it does not depend on a hidden CSV handoff."
-    )
+    st.warning("No deep-research plan exists yet. Complete company research first, then create the plan here or from Guided Research.")
+    st.page_link("main.py", label="← Return to Guided Research")
     st.stop()
 
-st.markdown("## 2. What the planner decided")
 counts = plan.get("counts", {})
-metric_cols = st.columns(7)
-for idx, stage in enumerate(["ADVERSARIAL", "DEEP", "TARGETED", "STRUCTURED", "RESEARCH_QUEUE", "SOURCE_GAP", "FINANCIAL_HOLD"]):
+metric_cols = st.columns(6)
+for idx, stage in enumerate(["ADVERSARIAL", "DEEP", "TARGETED", "STRUCTURED", "RESEARCH_QUEUE", "SOURCE_GAP"]):
     metric_cols[idx].metric(stage.replace("_", " ").title(), counts.get(stage, 0))
 
-with st.expander("What each research depth means", expanded=False):
+with st.expander("What do these stages mean?", expanded=False):
     st.markdown(
         """
-- **SOURCE GAP** — we do not yet have enough authoritative material to justify deeper work.
-- **STRUCTURED** — gather/organize core company evidence and fill basic analyst missions.
-- **TARGETED** — resolve specific missing questions, source classes or weak themes.
-- **DEEP** — investigate thesis breakers, management claims, cash conversion, competition and unresolved contradictions.
-- **BULL/BEAR (ADVERSARIAL)** — enough evidence exists to independently build and challenge the strongest positive and negative interpretations.
-- **RESEARCH QUEUE** — the evidence gate passed, but the current research budget is already full.
-- **FINANCIAL HOLD** — the financial stage has not approved expensive company research.
-        """
+- **SOURCE GAP** — not enough usable source evidence yet.
+- **STRUCTURED** — organize core evidence and fill basic research missions.
+- **TARGETED** — investigate specific unanswered questions or weak themes.
+- **DEEP** — investigate thesis breakers, management claims, cash conversion, competition and contradictions.
+- **ADVERSARIAL / BULL-BEAR** — enough evidence exists to independently argue both sides.
+- **RESEARCH QUEUE** — the evidence gate passed, but the current budget is full.
+- **FINANCIAL HOLD** — the company was not approved for expensive company research.
+"""
     )
 
 utilization = plan.get("budget_utilization", {})
 if utilization:
-    st.markdown("### Budget utilization")
-    udf = pd.DataFrame([
-        {
-            "Stage": stage,
-            "Budget": info.get("budget"),
-            "Passed evidence gate": info.get("passed_gate"),
-            "Admitted now": info.get("admitted"),
-            "Queued": info.get("queued"),
-        }
-        for stage, info in utilization.items()
-    ])
-    st.dataframe(udf, use_container_width=True, hide_index=True)
+    st.markdown("### Budget use")
+    st.dataframe(pd.DataFrame([{
+        "Stage": stage.replace("_", " ").title(),
+        "Budget": info.get("budget"),
+        "Passed evidence gate": info.get("passed_gate"),
+        "Admitted now": info.get("admitted"),
+        "Queued": info.get("queued"),
+    } for stage, info in utilization.items()]), use_container_width=True, hide_index=True)
 
 rows = plan.get("rows", [])
 if rows:
-    st.markdown("### Company-by-company allocation")
+    st.markdown("### Why each company is at its current depth")
     pdf = pd.DataFrame(rows)
     show = [c for c in [
-        "company", "stage", "system_stage", "research_state", "reason",
-        "mission_coverage", "document_coverage", "evidence_quality",
-        "research_readiness", "risk_items", "open_questions",
-        "missing_document_types", "research_priority",
+        "company", "stage", "research_state", "reason", "mission_coverage",
+        "document_coverage", "evidence_quality", "research_readiness", "risk_items", "open_questions",
     ] if c in pdf.columns]
     st.dataframe(pdf[show], use_container_width=True, hide_index=True)
 
-st.markdown("## 3. Inspect why a company is at this depth")
-company_names = [r.get("company") for r in rows if r.get("company")]
-if company_names:
-    chosen = st.selectbox("Company", company_names, key="depth_inspect_company")
+    chosen = st.selectbox("Inspect allocation for a company", [r.get("company") for r in rows if r.get("company")])
     row = next(r for r in rows if r.get("company") == chosen)
     company = run.ensure_company(chosen)
     dossier = company.research_dossier or {}
+    a, b, c, d = st.columns(4)
+    a.metric("Allocated stage", row.get("stage"))
+    b.metric("Mission coverage", f"{row.get('mission_coverage', 0)}%")
+    c.metric("Evidence quality", row.get("evidence_quality", 0))
+    d.metric("Research readiness", row.get("research_readiness", 0))
+    st.info(f"**Why:** {row.get('reason')}")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Allocated stage", row.get("stage"))
-    c2.metric("Mission coverage", f"{row.get('mission_coverage', 0)}%")
-    c3.metric("Evidence quality", row.get("evidence_quality", 0))
-    c4.metric("Research readiness", row.get("research_readiness", 0))
-    st.write("**Why:**", row.get("reason"))
-
-    if row.get("stage") == "RESEARCH_QUEUE":
-        st.info(f"This company passed the {row.get('original_stage')} evidence gate but is waiting because of the current research budget.")
-    if row.get("stage") == "SOURCE_GAP":
-        st.warning("Deeper analysis is intentionally blocked until source/evidence gaps are resolved or you explicitly override the next stage.")
-
-    missions = dossier.get("missions", [])
-    if missions:
-        st.markdown("### Analyst mission coverage")
-        st.dataframe(
-            pd.DataFrame([
-                {
-                    "Mission": m.get("label"),
-                    "Status": m.get("status"),
-                    "Evidence items": m.get("evidence_count"),
-                    "Why it matters": m.get("why"),
-                }
-                for m in missions
-            ]),
-            use_container_width=True,
-            hide_index=True,
-        )
-
+    if dossier.get("missions"):
+        with st.expander("Analyst mission coverage"):
+            st.dataframe(pd.DataFrame([{
+                "Mission": m.get("label"), "Status": m.get("status"), "Evidence items": m.get("evidence_count"), "Why it matters": m.get("why"),
+            } for m in dossier.get("missions", [])]), use_container_width=True, hide_index=True)
     if company.research_questions:
-        st.markdown("### Questions still open")
-        for q in company.research_questions:
-            st.write(f"- {q.get('question')}")
-            if q.get("reason"):
-                st.caption(q.get("reason"))
+        with st.expander("Open research questions", expanded=row.get("stage") in {"SOURCE_GAP", "STRUCTURED", "TARGETED"}):
+            for q in company.research_questions:
+                st.write(f"- {q.get('question')}")
+                if q.get("reason"): st.caption(q.get("reason"))
 
 st.divider()
-st.markdown("## 4. Bull/Bear thesis challenge")
-st.write(
-    "The system builds the strongest evidence-supported positive case and the strongest evidence-supported negative case, "
-    "then a neutral challenge compares them. Thesis balance is evidence support—not a probability of return."
-)
+st.markdown("## B. Challenge the strongest researched theses")
+st.write("The Bull researcher and Bear researcher use the same evidence set. A neutral challenge then compares which arguments survive, what is contradictory, and what evidence is still missing.")
 
 system_ready = [r.get("company") for r in rows if r.get("stage") == "ADVERSARIAL" and r.get("company")]
-evidence_candidates = [
-    c.company for c in run.companies.values()
-    if c.evidence and (c.research_state in {"EVIDENCE_READY", "RESEARCH_INCOMPLETE"})
-]
+evidence_candidates = [c.company for c in run.companies.values() if c.evidence and c.research_state in {"EVIDENCE_READY", "RESEARCH_INCOMPLETE"}]
 selectable = list(dict.fromkeys(system_ready + evidence_candidates))
 selected_for_challenge = st.multiselect(
     "Companies to challenge",
     selectable,
     default=system_ready,
-    help=(
-        "System-ready companies are selected by default. You may explicitly add another evidence-bearing company; "
-        "its weaker readiness remains visible in the result."
-    ),
+    help="System-ready companies are selected by default. You may explicitly include another evidence-bearing company; its weaker readiness remains visible.",
 )
 
 if not system_ready:
-    st.info(
-        "No company currently passes the automatic adversarial evidence gate. You can improve company research first, "
-        "adjust research budgets, or explicitly select an evidence-bearing company for analysis."
-    )
+    st.info("No company currently passes the automatic Bull/Bear evidence gate. Improve research coverage or explicitly select an evidence-bearing company if you want to inspect the weaker thesis state.")
 
-if st.button("Run Bull/Bear thesis challenge", disabled=not selected_for_challenge):
-    bar = st.progress(0)
-    status = st.empty()
+if st.button("Run Bull/Bear thesis challenge", type="primary", disabled=not selected_for_challenge):
+    bar, status_box = st.progress(0), st.empty()
     try:
         def challenge_progress(i, n, company):
-            bar.progress(i / max(n, 1))
-            status.write(f"{i}/{n} · challenging {company}")
-
-        results = run_thesis_analysis(
-            run,
-            plan,
-            company_names=selected_for_challenge,
-            progress=challenge_progress,
-        )
+            bar.progress(i / max(n, 1)); status_box.write(f"{i}/{n} · challenging {company}")
+        results = run_thesis_analysis(run, plan, company_names=selected_for_challenge, progress=challenge_progress)
         st.session_state.adversarial_results = results
         run.save(RUNS)
-        status.empty()
+        status_box.empty()
         st.success(f"Thesis challenge completed for {len(results)} companies.")
     except Exception as exc:
         run.log("ADVERSARIAL", "ANALYSIS_FAILED", str(exc), status="ERROR")
@@ -210,7 +156,7 @@ results = st.session_state.get("adversarial_results") or [
 ]
 
 if results:
-    st.markdown("## 5. Thesis challenge results")
+    st.markdown("### Thesis challenge summary")
     summary_rows = []
     for result in results:
         classification = result.get("classification", {}) or {}
@@ -221,99 +167,69 @@ if results:
             "Thesis balance": classification.get("thesis_balance"),
             "Fragility": classification.get("fragility_score"),
             "Adversarial readiness": classification.get("adversarial_readiness"),
-            "Bull strength": classification.get("bull_strength"),
-            "Bear strength": classification.get("bear_strength"),
             "Mode": challenge.get("mode"),
             "Unresolved questions": len(classification.get("unresolved_questions") or []),
         })
     st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
 
-    inspect = st.selectbox("Inspect thesis challenge", [r.get("company") for r in results], key="challenge_inspect_company")
+    inspect = st.selectbox("Inspect thesis challenge", [r.get("company") for r in results])
     result = next(r for r in results if r.get("company") == inspect)
     bull = (result.get("bull_bear") or {}).get("bull", {}) or {}
     bear = (result.get("bull_bear") or {}).get("bear", {}) or {}
     challenge = result.get("challenge", {}) or {}
     classification = result.get("classification", {}) or {}
 
-    st.markdown(f"### {inspect}")
     a, b, c, d = st.columns(4)
     a.metric("Research state", classification.get("thesis_status"))
     b.metric("Thesis balance", classification.get("thesis_balance"))
     c.metric("Fragility", classification.get("fragility_score"))
     d.metric("Adversarial readiness", classification.get("adversarial_readiness"))
-    st.caption("Thesis balance >50 means the bull case is better supported by the current evidence set; it is not a return forecast.")
+    st.caption("Thesis balance is relative evidence support, not a forecast of returns.")
 
     left, right = st.columns(2)
     with left:
-        st.markdown("#### Bull researcher")
+        st.markdown("#### 🟢 Bull researcher")
         st.write(bull.get("summary", ""))
-        for p in bull.get("points", []) or []:
-            st.write(f"- {p.get('point')}")
-            if p.get("evidence_ids"):
-                st.caption("Evidence: " + ", ".join(str(x) for x in p.get("evidence_ids") or []))
-        if bull.get("key_assumptions"):
-            st.markdown("**Key assumptions**")
-            for x in bull.get("key_assumptions") or []:
-                st.write(f"- {x}")
-        if bull.get("invalidation_conditions"):
-            st.markdown("**What would invalidate the bull case**")
-            for x in bull.get("invalidation_conditions") or []:
-                st.write(f"- {x}")
+        for point in bull.get("points", []) or []:
+            st.write(f"- {point.get('point')}")
+            if point.get("evidence_ids"): st.caption("Evidence: " + ", ".join(str(x) for x in point.get("evidence_ids") or []))
+        with st.expander("Bull assumptions / invalidation"):
+            for x in bull.get("key_assumptions") or []: st.write(f"- Assumption: {x}")
+            for x in bull.get("invalidation_conditions") or []: st.write(f"- Invalidation: {x}")
 
     with right:
-        st.markdown("#### Bear / forensic researcher")
+        st.markdown("#### 🔴 Bear / forensic researcher")
         st.write(bear.get("summary", ""))
-        for p in bear.get("points", []) or []:
-            st.write(f"- {p.get('point')}")
-            if p.get("evidence_ids"):
-                st.caption("Evidence: " + ", ".join(str(x) for x in p.get("evidence_ids") or []))
-        if bear.get("key_assumptions"):
-            st.markdown("**Key assumptions**")
-            for x in bear.get("key_assumptions") or []:
-                st.write(f"- {x}")
-        if bear.get("invalidation_conditions"):
-            st.markdown("**What would invalidate the bear case**")
-            for x in bear.get("invalidation_conditions") or []:
-                st.write(f"- {x}")
+        for point in bear.get("points", []) or []:
+            st.write(f"- {point.get('point')}")
+            if point.get("evidence_ids"): st.caption("Evidence: " + ", ".join(str(x) for x in point.get("evidence_ids") or []))
+        with st.expander("Bear assumptions / invalidation"):
+            for x in bear.get("key_assumptions") or []: st.write(f"- Assumption: {x}")
+            for x in bear.get("invalidation_conditions") or []: st.write(f"- Invalidation: {x}")
 
     st.markdown("#### Neutral challenge")
-    st.write(challenge.get("challenge_summary", ""))
+    st.info(challenge.get("challenge_summary", ""))
     if challenge.get("contradictions"):
-        st.markdown("**Contradictions / disputed points**")
-        cdf = pd.DataFrame(challenge.get("contradictions") or [])
-        st.dataframe(cdf, use_container_width=True, hide_index=True)
+        with st.expander("Contradictions / disputed points", expanded=True):
+            st.dataframe(pd.DataFrame(challenge.get("contradictions") or []), use_container_width=True, hide_index=True)
 
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("**Bull points that survived challenge**")
-        for p in challenge.get("surviving_bull_points") or []:
-            st.write(f"- {p.get('point') or p.get('claim') or p}")
+        st.markdown("**Bull points that survived**")
+        for p in challenge.get("surviving_bull_points") or []: st.write(f"- {p.get('point') or p.get('claim') or p}")
         st.markdown("**Fragility flags**")
-        for x in challenge.get("fragility_flags") or []:
-            st.write(f"- {x}")
+        for x in challenge.get("fragility_flags") or []: st.write(f"- {x}")
     with c2:
-        st.markdown("**Bear points that survived challenge**")
-        for p in challenge.get("surviving_bear_points") or []:
-            st.write(f"- {p.get('point') or p.get('claim') or p}")
+        st.markdown("**Bear points that survived**")
+        for p in challenge.get("surviving_bear_points") or []: st.write(f"- {p.get('point') or p.get('claim') or p}")
         st.markdown("**Unresolved questions**")
-        for x in challenge.get("unresolved_questions") or []:
-            st.write(f"- {x}")
-
-    missing = list(dict.fromkeys((bull.get("missing_evidence") or []) + (bear.get("missing_evidence") or [])))
-    if missing:
-        st.markdown("#### Evidence still needed")
-        for x in missing:
-            st.write(f"- {x}")
+        for x in challenge.get("unresolved_questions") or []: st.write(f"- {x}")
 
     if challenge.get("mode") == "deterministic":
-        st.warning(
-            "This challenge used deterministic evidence comparison because no compatible LLM was configured. "
-            "It can surface source-backed positive/negative evidence, but semantic contradiction resolution is intentionally limited."
-        )
+        st.warning("No compatible LLM was configured, so this used deterministic evidence comparison. Semantic contradiction resolution is intentionally limited.")
 else:
-    st.info("No Bull/Bear thesis analysis has been run yet.")
+    st.info("No Bull/Bear thesis challenge has been run yet.")
 
 st.divider()
-st.caption(
-    "Constitution rule: deep research allocates attention; Bull/Bear challenges a thesis. Neither stage produces an investment recommendation or expected-return probability."
-)
+st.page_link("main.py", label="← Return to Guided Research")
+st.caption("Research depth allocates attention; Bull/Bear challenges a thesis. Neither stage is an investment recommendation.")
