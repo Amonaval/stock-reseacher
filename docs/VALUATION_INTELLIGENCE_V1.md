@@ -52,7 +52,7 @@ Method:
 normalized EPS × scenario P/E multiple
 ```
 
-Normalized EPS uses the median of the latest three positive annual EPS observations where possible.
+Normalized EPS uses the median of the latest three available annual EPS observations where possible. Weak or loss years are not silently removed from the normalization set.
 
 The base multiple is anchored, in priority order, to available contextual data:
 
@@ -104,12 +104,12 @@ If an insurer is detected, v1 returns an explicit data/model gap instead of manu
 Method:
 
 ```text
-longer normalized EPS × conservative scenario P/E
+full-cycle normalized EPS × conservative scenario P/E
 ```
 
-The model uses up to five positive annual EPS observations and applies a wider Bear haircut and a smaller Bull premium than the general framework.
+The model uses up to five annual EPS observations **including weak and loss years** and applies a wider Bear haircut and a smaller Bull premium than the general framework.
 
-This is intended to reduce the common error of valuing peak-cycle earnings as if they were permanent.
+This is intended to reduce the common error of valuing peak-cycle earnings as if they were permanent or discarding downturn years from normalization.
 
 ### 5. Utility / regulated / asset-heavy business
 
@@ -141,13 +141,13 @@ Automatic classification is a convenience, not a hidden source of truth.
 A successful valuation should show:
 
 ```text
-Current price
+Captured market price from the financial-research run
 
 Bear fair-value scenario
 Base fair-value scenario
 Bull fair-value scenario
 
-Upside/downside vs current price
+Upside/downside vs captured price
 
 Valuation family
 Method
@@ -159,6 +159,8 @@ Warnings / model limitations
 What would change the valuation
 ```
 
+Valuation Intelligence v1 does **not** live-refresh market prices. Price comparisons therefore use the price captured during the run's financial-research stage and must be labeled that way.
+
 The product should favor ranges and assumptions over false point precision.
 
 ---
@@ -167,6 +169,7 @@ The product should favor ranges and assumptions over false point precision.
 
 Valuation Intelligence v1 does not yet provide:
 
+- live market-price refresh;
 - full DCF / FCFF / FCFE;
 - EV/EBITDA modeling;
 - sum-of-the-parts;
@@ -195,6 +198,8 @@ The engine uses the financial and research data already present in the current R
 6. Every output must expose its assumptions.
 7. Bear / Base / Bull are scenarios, not probabilities.
 8. Fair value is a range of assumption-dependent outcomes, not a prediction.
+9. Weak/loss years must not be silently removed from cyclical normalization.
+10. Captured prices must not be presented as live quotes.
 
 ---
 
@@ -206,9 +211,9 @@ Valuation Intelligence v1 is complete when it can:
 - classify/override a valuation family;
 - value general/quality businesses through normalized earnings;
 - value banks/NBFCs through justified P/B;
-- normalize cyclical earnings more conservatively;
+- normalize cyclical earnings across weak/loss years rather than only good years;
 - explicitly block unsupported insurer valuation;
 - expose scenario assumptions and method selection;
 - persist company valuation results;
-- show current price vs Bear / Base / Bull scenarios;
+- show captured price vs Bear / Base / Bull scenarios without implying a live quote;
 - keep warnings and operator overrides visible.
