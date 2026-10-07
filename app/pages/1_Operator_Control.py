@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from operator_controls import select_candidates, apply_financial_review, apply_adversarial_review
+from operator_controls import select_candidates, apply_financial_review
 from strategy_profiles import (
     ensure_strategy_metadata,
     export_strategy_profile,
@@ -12,7 +12,7 @@ from strategy_profiles import (
     update_strategy_from_editor,
 )
 from screener_adapter import ScreenerAdapter
-from research_service import ResearchService
+from research_analysis_orchestrator import plan_research_for_run
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = ROOT / "runs"
@@ -207,49 +207,47 @@ else:
 
 st.divider()
 st.markdown("## 4. Deep-research budget & Bull/Bear control")
-memories = st.session_state.get("research_memories") or []
-if memories and run is not None:
-    st.write("Tune how much research effort the system may spend at each depth. These are capacity budgets, not investment thresholds.")
-    b1, b2, b3, b4 = st.columns(4)
-    structured = b1.number_input("Structured", min_value=1, max_value=max(1, len(memories)), value=min(100, max(1, len(memories))))
-    targeted = b2.number_input("Targeted", min_value=1, max_value=max(1, len(memories)), value=min(50, max(1, len(memories))))
-    deep = b3.number_input("Deep", min_value=1, max_value=max(1, len(memories)), value=min(25, max(1, len(memories))))
-    adversarial = b4.number_input("Bull/Bear", min_value=1, max_value=max(1, len(memories)), value=min(15, max(1, len(memories))))
-    if st.button("Replan research depth with these budgets"):
-        budgets = {
-            "STRUCTURED": int(structured),
-            "TARGETED": int(min(targeted, structured)),
-            "DEEP": int(min(deep, targeted, structured)),
-            "ADVERSARIAL": int(min(adversarial, deep, targeted, structured)),
-        }
-        st.session_state.research_plan = ResearchService(run, RUNS).plan_deep_research(memories, budgets)
-        st.success(f"Replanned: {st.session_state.research_plan.get('counts', {})}")
-
-plan = st.session_state.get("research_plan") or {}
-if not plan:
-    st.info("Create the progressive research plan first. Its budgets should be treated as defaults, not immutable decisions.")
+if run is None:
+    st.info("Start a research run first.")
 else:
-    rows = plan.get("rows", [])
-    plan_df = pd.DataFrame([{
-        "Bull/Bear?": r.get("stage") == "ADVERSARIAL",
-        "Company": r.get("company"),
-        "System stage": r.get("system_stage", r.get("stage")),
-        "Current stage": r.get("stage"),
-        "Reason": r.get("system_reason", r.get("reason")),
-        "Evidence quality": r.get("evidence_quality"),
-        "Research readiness": r.get("research_readiness"),
-    } for r in rows])
-    plan_edit = st.data_editor(
-        plan_df, use_container_width=True, hide_index=True,
-        disabled=["Company", "System stage", "Current stage", "Reason", "Evidence quality", "Research readiness"],
-        key="adversarial_review_editor",
-    )
-    if st.button("Apply Bull/Bear review"):
-        selected = set(plan_edit.loc[plan_edit["Bull/Bear?"] == True, "Company"].tolist())
-        st.session_state.research_plan = apply_adversarial_review(plan, selected)
-        if run:
-            run.log("OPERATOR", "ADVERSARIAL_REVIEW_APPLIED", f"User selected {len(selected)} companies for Bull/Bear challenge.")
-        st.success(f"Bull/Bear stage will use {len(selected)} companies.")
+    researched = [c for c in run.companies.values() if c.research_state not in {"", "NOT_RESEARCHED"} or c.evidence]
+    if not researched:
+        st.info("Run company research first. Deep-research budgets become meaningful only after source-linked evidence exists.")
+    else:
+        st.write("Tune research-capacity budgets here. These control analyst attention, not investment conviction.")
+        existing_plan = st.session_state.get("research_plan") or {}
+        defaults = existing_plan.get("budgets") or {"STRUCTURED": 100, "TARGETED": 50, "DEEP": 25, "ADVERSARIAL": 15}
+        max_n = max(1, len(researched))
+        b1, b2, b3, b4 = st.columns(4)
+        structured = b1.number_input("Structured", min_value=0, max_value=max_n, value=min(int(defaults.get("STRUCTURED", 100)), max_n))
+        targeted = b2.number_input("Targeted", min_value=0, max_value=max_n, value=min(int(defaults.get("TARGETED", 50)), max_n))
+        deep = b3.number_input("Deep", min_value=0, max_value=max_n, value=min(int(defaults.get("DEEP", 25)), max_n))
+        adversarial = b4.number_input("Bull/Bear", min_value=0, max_value=max_n, value=min(int(defaults.get("ADVERSARIAL", 15)), max_n))
+        if st.button("Replan research depth with these budgets"):
+            budgets = {
+                "STRUCTURED": int(structured),
+                "TARGETED": int(targeted),
+                "DEEP": int(deep),
+                "ADVERSARIAL": int(adversarial),
+            }
+            st.session_state.research_plan = plan_research_for_run(run, budgets)
+            run.save(RUNS)
+            st.success(f"Replanned: {st.session_state.research_plan.get('counts', {})}")
+
+        plan = st.session_state.get("research_plan") or {}
+        if plan:
+            rows = plan.get("rows", [])
+            st.dataframe(pd.DataFrame([{
+                "Company": r.get("company"),
+                "Current stage": r.get("stage"),
+                "System stage": r.get("system_stage"),
+                "Research state": r.get("research_state"),
+                "Mission coverage": r.get("mission_coverage"),
+                "Evidence quality": r.get("evidence_quality"),
+                "Research readiness": r.get("research_readiness"),
+                "Why": r.get("reason"),
+            } for r in rows]), use_container_width=True, hide_index=True)
+        st.page_link("pages/4_Deep_Research_Thesis_Challenge.py", label="Open full Deep Research & Thesis Challenge workspace →")
 
 st.divider()
 st.caption("Operator overrides are explicit and logged. They do not erase the system's generated proposal, evidence coverage, or original reasoning.")
