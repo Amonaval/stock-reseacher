@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 
-from conviction_synthesis import synthesize_company
+from conviction_synthesis import synthesize_company, synthesize_run
 from research_models import CompanyResearch, ResearchRun
 
 
@@ -69,6 +69,14 @@ def test_high_priority_requires_surviving_bull_and_favorable_base_context():
     assert result["invalidation_conditions"]
 
 
+def test_wide_bear_downside_blocks_high_priority_state():
+    company = _base_company()
+    company.valuation["scenarios"]["bear"]["upside_downside_pct"] = -45
+    result = synthesize_company(company)
+    assert result["decision_state"] == "POSITIVE_THESIS_WIDE_DOWNSIDE"
+    assert result["decision_readiness"] == "READY_FOR_INVESTOR_REVIEW"
+
+
 def test_bear_dominated_overrides_attractive_valuation_context():
     company = _base_company()
     company.adversarial_result["classification"]["thesis_status"] = "BEAR_CASE_DOMINATES"
@@ -76,6 +84,14 @@ def test_bear_dominated_overrides_attractive_valuation_context():
     result = synthesize_company(company)
     assert result["decision_state"] == "RISK_DOMINATED_RESEARCH_CASE"
     assert result["dimensions"]["valuation"]["base_vs_captured_pct"] == 25
+
+
+def test_bear_dominated_remains_visible_even_without_valuation():
+    company = _base_company()
+    company.adversarial_result["classification"]["thesis_status"] = "BEAR_CASE_DOMINATES"
+    company.valuation = {}
+    result = synthesize_company(company)
+    assert result["decision_state"] == "RISK_DOMINATED_RESEARCH_CASE"
 
 
 def test_fragility_overrides_large_valuation_upside():
@@ -118,6 +134,22 @@ def test_unoverridden_financial_hold_is_explicit_conflict():
     company.financial_assessment["effective_research_decision"] = "HOLD"
     result = synthesize_company(company)
     assert result["decision_state"] == "FINANCIAL_QUALITY_CONFLICT"
+
+
+def test_synthesis_refresh_preserves_separate_investor_review():
+    run = ResearchRun.create()
+    company = _base_company()
+    company.decision_synthesis = {
+        "investor_review": {
+            "stance": "WATCH_CLOSELY",
+            "conviction": "MEDIUM",
+            "notes": "Track execution",
+        }
+    }
+    run.companies["example ltd"] = company
+    rows = synthesize_run(run)
+    assert rows[0]["investor_review"]["stance"] == "WATCH_CLOSELY"
+    assert run.companies["example ltd"].decision_synthesis["investor_review"]["notes"] == "Track execution"
 
 
 def test_old_run_without_decision_synthesis_is_backward_compatible():
