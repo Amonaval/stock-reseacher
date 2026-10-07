@@ -81,7 +81,10 @@ def next_action(steps: list[WorkflowStep]) -> tuple[WorkflowStep | None, str]:
                 "thesis_challenge": "The evidence gate is now satisfied for at least one company. Run Bull/Bear thesis challenge and inspect what survives, what contradicts, and what remains unknown.",
             }
             return step, actions[step.key]
-    return None, "The current research run has completed all implemented stages. Review the results before starting another run or moving to the next product milestone."
+    return None, (
+        "The six-step research run is complete. Open **Research Confidence** to judge whether the evidence foundation is strong enough "
+        "for the next product layer: valuation context."
+    )
 
 
 def status_icon(status: str) -> str:
