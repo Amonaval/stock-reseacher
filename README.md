@@ -4,7 +4,7 @@ An experimental **Personal AI Equity Research Operating System** for Indian equi
 
 > **Autonomous by default. Evidence-driven. Investor-controlled. Self-challenging.**
 
-The product is not intended to be a black-box stock-tip generator. Its job is to learn an investor's screening philosophy, discover candidates, collect financial and company evidence, expose uncertainty, progressively allocate research effort and eventually support explainable valuation, conviction and portfolio decisions.
+The product is not intended to be a black-box stock-tip generator. Its job is to learn an investor's screening philosophy, discover candidates, collect financial and company evidence, expose uncertainty, progressively allocate research effort, challenge the thesis, judge research quality and support assumption-driven valuation context.
 
 Every major stage should answer:
 
@@ -20,7 +20,7 @@ A successful function call is not considered research completion.
 
 For first-time use, read [User Guide](docs/USER_GUIDE.md).
 
-The application home page is **Guided Research**. It presents one six-step journey and always shows a **Next recommended action**. Specialist workspaces are optional and should normally be opened only when the guided flow points to them.
+The application home page is **Guided Research**. It presents one six-step research journey and always shows a **Next recommended action**. Specialist workspaces are optional and should normally be opened only when the guided flow points to them.
 
 ```text
 1. Connect & prepare strategies
@@ -34,6 +34,10 @@ The application home page is **Guided Research**. It presents one six-step journ
 5. Deepen unresolved research
         ↓
 6. Challenge the thesis
+        ↓
+Research Confidence
+        ↓
+Valuation Intelligence
 ```
 
 ## Current workflow
@@ -68,9 +72,13 @@ Execute deeper evidence-gap research where needed
 Rebuild depth plan
         ↓
 Bull/Bear adversarial challenge
+        ↓
+Research Confidence quality gate
+        ↓
+Sector/business-model-aware valuation scenarios
 ```
 
-The valuation / conviction / final-ranking / portfolio layers remain deliberately paused until the current research foundation has been evaluated strategically.
+Valuation Intelligence v1 is implemented. Conviction, final ranking and portfolio construction remain deliberately pending until valuation behavior is validated on real researched companies.
 
 ## Long-running work runs in the background
 
@@ -94,10 +102,10 @@ The app currently allows one long-running background worker per research run at 
 
 ### Guided Research
 
-The normal end-to-end workflow. This is where most users should stay.
+The normal end-to-end research workflow. This is where most users should stay.
 
 It provides:
-- six numbered stages;
+- six numbered research stages;
 - stage completion status;
 - one highlighted next recommended action;
 - direct links to specialist workspaces only when useful;
@@ -140,6 +148,40 @@ Detailed workspace for:
 - contradictions;
 - fragility;
 - unresolved questions.
+
+### Research Confidence
+
+Quality-control layer that asks **how much the research dossier itself should be trusted**.
+
+It evaluates:
+- source authority;
+- source freshness;
+- evidence traceability;
+- fundamental mission coverage;
+- cross-source triangulation;
+- downside/governance evidence;
+- contradiction handling;
+- financial-data coverage;
+- unresolved research questions.
+
+Research Confidence is intentionally separate from investment conviction.
+
+### Valuation Intelligence
+
+Assumption-driven valuation context for companies that pass the Research Confidence quality gate.
+
+Valuation Intelligence v1 provides:
+- visible and overridable valuation-family classification;
+- normalized earnings for general/quality businesses;
+- justified P/B for banks/NBFCs/lending businesses;
+- longer-cycle earnings normalization for cyclicals/commodities;
+- conservative v1 treatment for utility/regulated/asset-heavy businesses;
+- explicit blocking of insurer valuation until embedded-value/VNB data exists;
+- Bear / Base / Bull scenario values;
+- current-price upside/downside context;
+- visible assumptions, anchors, warnings and limitations.
+
+Valuation scenarios are not target-price predictions or investment recommendations.
 
 ### Operator Control
 
@@ -196,7 +238,8 @@ Optional control is available at important gates:
 - maximum companies sent to financial research;
 - manual company include/exclude;
 - financial-stage override;
-- deep-research capacity.
+- deep-research capacity;
+- valuation-family and assumption overrides.
 
 System proposals remain preserved separately from user overrides.
 
@@ -259,6 +302,39 @@ The evidence contract is sufficient rather than checkbox-complete: an annual rep
 - deterministic fallback when no compatible LLM is configured
 
 The Bull/Bear gate deliberately refuses to manufacture a thesis from weak evidence. `research_readiness` remains visible as a diagnostic but is not stacked as another opaque hard cutoff after explicit evidence gates have already passed.
+
+### Research Confidence
+
+- source authority and freshness
+- source/page traceability
+- analyst-mission coverage
+- theme-level cross-document triangulation
+- downside/governance source diversity
+- contradiction/unresolved-question handling
+- financial-data coverage
+- explicit critical gaps
+- `HIGH / MODERATE / LOW_RESEARCH_CONFIDENCE`
+- `READY_FOR_VALUATION_CONTEXT` quality gate
+
+Research Confidence measures the research process, not stock attractiveness.
+
+### Valuation Intelligence v1
+
+- persistent per-company valuation result
+- research-confidence gate
+- business-model-aware valuation-family classification
+- operator override of valuation family and assumptions
+- normalized-EPS earnings-multiple scenarios
+- justified P/B bank/NBFC scenarios
+- longer normalized earnings for cyclicals
+- explicit unsupported-insurer state instead of generic substitution
+- Bear / Base / Bull fair-value scenarios
+- upside/downside vs captured current price
+- historical / industry P/E anchor visibility
+- explicit warnings when current P/E is the only fallback anchor
+- visible sensitivity drivers
+
+Important v1 limitations include no full DCF, SOTP, EV/EBITDA, insurer embedded-value acquisition, forward consensus estimates or scenario probabilities.
 
 ## Quick start
 
@@ -349,6 +425,9 @@ python -m pip install -r requirements.txt
 - [Company Research Engine](docs/COMPANY_RESEARCH_ENGINE.md)
 - [Background Jobs & Deep Research](docs/BACKGROUND_JOBS_AND_DEEP_RESEARCH.md)
 - [Deep Research & Thesis Challenge](docs/DEEP_RESEARCH_AND_THESIS_CHALLENGE.md)
+- [Research Confidence](docs/RESEARCH_CONFIDENCE.md)
+- [Strategic Review Outcome](docs/STRATEGIC_REVIEW_OUTCOME.md)
+- [Valuation Intelligence v1](docs/VALUATION_INTELLIGENCE_V1.md)
 - [Strategic Review Checkpoint](docs/STRATEGIC_REVIEW_CHECKPOINT.md)
 
 Other implementation docs:
