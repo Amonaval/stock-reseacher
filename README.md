@@ -4,7 +4,7 @@ An experimental **Personal AI Equity Research Operating System** for Indian equi
 
 > **Autonomous by default. Evidence-driven. Investor-controlled. Self-challenging.**
 
-The product is not intended to be a black-box stock-tip generator. Its job is to learn an investor's screening philosophy, discover candidates, collect financial and company evidence, expose uncertainty, progressively allocate research effort, challenge the thesis, judge research quality and support assumption-driven valuation context.
+The product is not intended to be a black-box stock-tip generator. Its job is to learn an investor's screening philosophy, discover candidates, collect financial and company evidence, expose uncertainty, progressively allocate research effort, challenge the thesis, judge research quality, build assumption-driven valuation context and synthesize the full research case without hiding it behind BUY/SELL output.
 
 Every major stage should answer:
 
@@ -20,7 +20,7 @@ A successful function call is not considered research completion.
 
 For first-time use, read [User Guide](docs/USER_GUIDE.md).
 
-The application home page is **Guided Research**. It presents one six-step research journey and always shows a **Next recommended action**. Specialist workspaces are optional and should normally be opened only when the guided flow points to them.
+The application home page is **Guided Research**. It presents one six-step research journey and always shows a **Next recommended action**. Specialist workspaces then take completed research through quality control, valuation and decision synthesis.
 
 ```text
 1. Connect & prepare strategies
@@ -38,6 +38,8 @@ The application home page is **Guided Research**. It presents one six-step resea
 Research Confidence
         ↓
 Valuation Intelligence
+        ↓
+Conviction & Decision Synthesis
 ```
 
 ## Current workflow
@@ -76,9 +78,11 @@ Bull/Bear adversarial challenge
 Research Confidence quality gate
         ↓
 Sector/business-model-aware valuation scenarios
+        ↓
+Explainable decision synthesis + separate Investor Review
 ```
 
-Valuation Intelligence v1 is implemented. Conviction, final ranking and portfolio construction remain deliberately pending until valuation behavior is validated on real researched companies.
+Conviction & Decision Synthesis v1 is implemented. Final ranking, portfolio construction and continuous monitoring remain deliberately pending until the full research-to-decision workflow is validated on real companies.
 
 ## Long-running work runs in the background
 
@@ -174,14 +178,31 @@ Valuation Intelligence v1 provides:
 - visible and overridable valuation-family classification;
 - normalized earnings for general/quality businesses;
 - justified P/B for banks/NBFCs/lending businesses;
-- longer-cycle earnings normalization for cyclicals/commodities;
+- longer-cycle earnings normalization for cyclicals/commodities including weak/loss years;
 - conservative v1 treatment for utility/regulated/asset-heavy businesses;
 - explicit blocking of insurer valuation until embedded-value/VNB data exists;
 - Bear / Base / Bull scenario values;
-- current-price upside/downside context;
+- captured-price upside/downside context;
 - visible assumptions, anchors, warnings and limitations.
 
 Valuation scenarios are not target-price predictions or investment recommendations.
+
+### Conviction & Decision Synthesis
+
+Explainable final research-case synthesis. It combines, without averaging them into one hidden score:
+
+- Research Confidence;
+- financial-stage conclusion and any user override;
+- Bull/Bear thesis status and fragility;
+- valuation posture;
+- unresolved questions;
+- Bull assumptions and invalidation conditions.
+
+System states include high-priority research candidate, positive thesis near/stretched valuation, contested case, fragile case, risk-dominated case, financial-quality conflict and explicit incomplete states.
+
+The workspace also stores an optional **Investor Review** separately from system synthesis. The user can record their own stance, conviction and notes without rewriting the system conclusion.
+
+This layer does not produce BUY/SELL instructions, return probabilities or portfolio weights.
 
 ### Operator Control
 
@@ -239,14 +260,15 @@ Optional control is available at important gates:
 - manual company include/exclude;
 - financial-stage override;
 - deep-research capacity;
-- valuation-family and assumption overrides.
+- valuation-family and assumption overrides;
+- separate Investor Review after synthesis.
 
-System proposals remain preserved separately from user overrides.
+System proposals remain preserved separately from user overrides/reviews.
 
 ### Financial research
 
 - automatic company-page financial-history collection
-- snapshot ratios + multi-period statements
+- snapshot ratios + multi-period history
 - growth/trend/CAGR support
 - quality / balance-sheet / cash-flow / valuation dimensions
 - explicit evidence coverage
@@ -326,15 +348,30 @@ Research Confidence measures the research process, not stock attractiveness.
 - operator override of valuation family and assumptions
 - normalized-EPS earnings-multiple scenarios
 - justified P/B bank/NBFC scenarios
-- longer normalized earnings for cyclicals
+- longer normalized earnings for cyclicals including weak/loss years
 - explicit unsupported-insurer state instead of generic substitution
 - Bear / Base / Bull fair-value scenarios
-- upside/downside vs captured current price
+- upside/downside vs captured run price
 - historical / industry P/E anchor visibility
 - explicit warnings when current P/E is the only fallback anchor
 - visible sensitivity drivers
 
 Important v1 limitations include no full DCF, SOTP, EV/EBITDA, insurer embedded-value acquisition, forward consensus estimates or scenario probabilities.
+
+### Conviction & Decision Synthesis v1
+
+- persistent per-company decision synthesis
+- no master system conviction score
+- separate research-quality, financial-quality, thesis and valuation dimensions
+- explicit decision readiness
+- state precedence that prevents favorable valuation from hiding Bear/fragility/research gaps
+- visible rationale and blockers
+- unresolved questions
+- Bull assumptions / what must be true
+- thesis invalidation conditions where available
+- what could strengthen/weaken the case
+- separate optional Investor Review with stance, user conviction and notes
+- no BUY/SELL, expected-return probability or portfolio-weight output
 
 ## Quick start
 
@@ -428,6 +465,7 @@ python -m pip install -r requirements.txt
 - [Research Confidence](docs/RESEARCH_CONFIDENCE.md)
 - [Strategic Review Outcome](docs/STRATEGIC_REVIEW_OUTCOME.md)
 - [Valuation Intelligence v1](docs/VALUATION_INTELLIGENCE_V1.md)
+- [Conviction & Decision Synthesis v1](docs/CONVICTION_DECISION_SYNTHESIS_V1.md)
 - [Strategic Review Checkpoint](docs/STRATEGIC_REVIEW_CHECKPOINT.md)
 
 Other implementation docs:
