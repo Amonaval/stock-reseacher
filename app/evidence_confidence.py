@@ -183,7 +183,10 @@ def assess_evidence_confidence(company, *, now: datetime | None = None) -> dict:
     valuation_context = (
         "READY_FOR_VALUATION_CONTEXT"
         if state in {"HIGH_RESEARCH_CONFIDENCE", "MODERATE_RESEARCH_CONFIDENCE"}
-        and mission_coverage >= 70 and financial_coverage >= 60 and downside_coverage > 0
+        and not critical_gaps
+        and mission_coverage >= 70
+        and financial_coverage >= 60
+        and downside_coverage > 0
         else "MORE_RESEARCH_NEEDED"
     )
 
