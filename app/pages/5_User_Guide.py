@@ -15,7 +15,7 @@ st.info("**If this is your first run:** stay on **Guided Research** and follow t
 st.markdown("## The product in one sentence")
 st.write(
     "The app learns or uses your stock-screening philosophy, finds candidates, verifies their financials, "
-    "collects source evidence, spends deeper research effort only where justified, and then challenges the thesis from both Bull and Bear perspectives."
+    "collects source evidence, resolves important evidence gaps, and then deliberately argues both sides of the strongest researched theses."
 )
 
 st.markdown("## The normal six-step journey")
@@ -24,23 +24,74 @@ steps = [
     ("2", "Screen the market", "Run the enabled strategies and combine results into one deduplicated candidate universe."),
     ("3", "Check financial quality", "Collect multi-period financials and decide which candidates deserve expensive company research."),
     ("4", "Research the business", "Acquire source documents, extract evidence, expose risks, catalysts and unanswered questions."),
-    ("5", "Allocate deeper research", "Spend progressively more analyst effort on fewer companies based on evidence quality and gaps."),
-    ("6", "Challenge the thesis", "Run independent Bull/Bear analysis and surface contradictions, fragility and missing evidence."),
+    ("5", "Deepen unresolved research", "Plan the research depth, then actually resolve source/mission/risk-evidence gaps for the companies that need more work."),
+    ("6", "Challenge the thesis", "For evidence-ready companies, build the strongest Bull case and strongest Bear case, then compare what survives."),
 ]
 for n, title, text in steps:
     st.markdown(f"### {n}. {title}")
     st.write(text)
 
+st.markdown("## Long-running work continues in the background")
+st.success(
+    "Screen discovery, query crawling, screening, financial collection, company research, deep evidence-gap research and Bull/Bear challenge now run in a separate local worker process."
+)
+st.markdown(
+    """
+You can safely open another page while those jobs run.
+
+- Streamlit navigation does **not** cancel the worker.
+- Progress/results are written to disk.
+- Return to Guided Research or open **Background Jobs** to refresh/inspect progress.
+- The app intentionally allows one long-running worker per research run at a time to avoid conflicting writes.
+"""
+)
+
 st.markdown("## What the sidebar pages are for")
 st.markdown(
     """
 - **Guided Research** — the normal workflow. Use this most of the time.
+- **User Guide** — plain-language explanation of the product and first-run walkthrough.
+- **Background Jobs** — monitor crawling/research that continues while you move around the app.
 - **Research Evidence** — detailed company-level source attempts, documents, findings and open questions.
-- **Deep Research & Thesis Challenge** — detailed research-budget decisions plus Bull/Bear outputs.
-- **Operator Control** — optional advanced controls: strategy tuning, candidate pruning, user overrides and Bull/Bear inclusion.
+- **Deep Research & Thesis Challenge** — detailed research-depth decisions, deeper evidence-gap work, and Bull/Bear outputs.
+- **Operator Control** — optional advanced controls: strategy tuning, candidate pruning and user overrides.
 - **Runtime Settings** — technical settings such as delay between Screener requests.
 
-You are not expected to move page-by-page from top to bottom. The **Guided Research** page tells you when a specialist workspace is useful.
+You are not expected to move page-by-page from top to bottom. **Guided Research** tells you when a specialist workspace is useful.
+"""
+)
+
+st.markdown("## What Step 5 really means")
+st.write(
+    "A research-depth plan is only a diagnosis. If a company is marked SOURCE_GAP, STRUCTURED, TARGETED or DEEP, the app still needs to perform additional research before Bull/Bear analysis becomes meaningful."
+)
+st.markdown(
+    """
+Use **Resolve evidence gaps in background**. The deeper pass will:
+
+- broaden source acquisition;
+- keep evidence already collected rather than replacing it;
+- fetch additional useful source classes;
+- fill uncovered fundamental-analysis missions;
+- seek explicit downside/risk evidence;
+- rebuild the company dossier;
+- automatically rebuild the research-depth plan.
+"""
+)
+
+st.markdown("## What 'Challenge the thesis' means")
+st.write(
+    "This is a confirmation-bias test, not a stock recommendation. The app refuses to run the automatic challenge until the evidence base is strong enough."
+)
+st.markdown(
+    """
+For each ready company:
+
+1. **Bull researcher** — constructs the strongest positive thesis supported by the evidence.
+2. **Bear / forensic researcher** — attacks that thesis using supported business, cash-flow, governance, competition, execution and capital-allocation risks.
+3. **Neutral challenge** — compares both sides, identifies contradictions, fragile assumptions and unresolved questions.
+
+A company being blocked from this step means **research is incomplete**, not that the company is bad.
 """
 )
 
@@ -50,10 +101,11 @@ terms = [
     ("WATCHLIST", "Interesting enough to retain, but not as clean/complete as a straightforward advance."),
     ("DATA_RETRY", "Financial data coverage is too incomplete for a confident decision. This is not a rejection."),
     ("SOURCE_GAP", "The research engine could not acquire enough usable source evidence. This is not proof that the company is weak."),
-    ("RESEARCH_INCOMPLETE", "Some evidence exists, but important analyst missions or source classes remain open."),
-    ("EVIDENCE_READY", "The current company-research contract is satisfied. It means ready to challenge, not ready to buy."),
+    ("RESEARCH_INCOMPLETE", "Some evidence exists, but critical source coverage or fundamental analyst missions remain open."),
+    ("EVIDENCE_READY", "A sufficient core/current evidence base and enough analyst-mission coverage exist. Optional gaps may remain visible. This is not a buy signal."),
+    ("STRUCTURED / TARGETED / DEEP", "The company needs progressively more research work before thesis challenge."),
     ("RESEARCH_QUEUE", "The evidence gate was passed, but the current research-depth budget is full. The company is retained."),
-    ("ADVERSARIAL", "Enough evidence exists to justify independent Bull/Bear thesis challenge."),
+    ("ADVERSARIAL", "Enough evidence, readiness and downside evidence exist to justify independent Bull/Bear thesis challenge."),
     ("CONTESTED", "Bull and Bear evidence remain relatively balanced after challenge."),
     ("BULL_CASE_SURVIVES", "The Bull case is better supported by current evidence. This is not a buy recommendation."),
     ("BEAR_CASE_DOMINATES", "The Bear case is better supported by current evidence. This is not an automatic sell recommendation."),
@@ -87,8 +139,9 @@ st.markdown(
 2. Carry roughly **5–15 companies** through financial and company research.
 3. Open **Research Evidence** for 2–3 names and verify whether the sources/findings make sense to you.
 4. Create the deep-research plan.
-5. Run Bull/Bear on the evidence-ready names.
-6. Compare the app's thesis challenge with your own judgement.
+5. Run **Resolve evidence gaps** for companies still in SOURCE_GAP / STRUCTURED / TARGETED / DEEP.
+6. Recheck which names become Bull/Bear-ready.
+7. Run thesis challenge on those names and compare its Bull/Bear conclusions with your own judgement.
 
 This is the best way to evaluate whether the product is adding real research value before we build valuation, conviction and portfolio layers.
 """
