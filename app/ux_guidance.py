@@ -34,13 +34,21 @@ def workflow_steps(run, state: dict) -> list[WorkflowStep]:
     candidates = _research_candidates(run)
     researched = [c for c in candidates if c.research_state not in {"", "NOT_RESEARCHED"} or c.evidence]
     evidence_ready = [c for c in researched if c.research_state == "EVIDENCE_READY"]
+    plan_rows = plan.get("rows", [])
+    needs_deeper_work = [r for r in plan_rows if r.get("stage") in {"SOURCE_GAP", "STRUCTURED", "TARGETED", "DEEP"}]
+    challenge_ready = [r for r in plan_rows if r.get("stage") == "ADVERSARIAL"]
 
     s1_status = "DONE" if strategies else "IN_PROGRESS" if (connection.get("connected") or state.get("screen_queries")) else "NEXT"
     s2_status = "DONE" if universe else "NEXT" if strategies else "LOCKED"
     s3_status = "DONE" if assessments else "NEXT" if universe else "LOCKED"
     s4_status = "DONE" if researched else "NEXT" if candidates else "LOCKED"
-    s5_status = "DONE" if plan else "NEXT" if researched else "LOCKED"
-    s6_status = "DONE" if adversarial else "NEXT" if any(r.get("stage") == "ADVERSARIAL" for r in plan.get("rows", [])) else "LOCKED"
+    if not plan:
+        s5_status = "NEXT" if researched else "LOCKED"
+    elif needs_deeper_work and not challenge_ready:
+        s5_status = "IN_PROGRESS"
+    else:
+        s5_status = "DONE"
+    s6_status = "DONE" if adversarial else "NEXT" if challenge_ready else "LOCKED"
 
     return [
         WorkflowStep(1, "methodology", "Connect & prepare strategies", "Teach the app what to look for.", s1_status,
@@ -51,10 +59,13 @@ def workflow_steps(run, state: dict) -> list[WorkflowStep]:
                      f"{len(assessments)} companies assessed" if assessments else "Collect financial history automatically for the candidate list."),
         WorkflowStep(4, "company_research", "Research the business", "Read source material and make unknowns explicit.", s4_status,
                      f"{len(researched)}/{len(candidates)} approved companies researched; {len(evidence_ready)} evidence-ready" if candidates else "Research companies that passed or were manually approved after financial review."),
-        WorkflowStep(5, "deep_research", "Allocate deeper research", "Spend more analyst effort only where evidence justifies it.", s5_status,
-                     f"Plan ready: {plan.get('counts', {})}" if plan else "Create a transparent research-depth plan and review its budget."),
+        WorkflowStep(5, "deep_research", "Deepen unresolved research", "Resolve evidence gaps before thesis challenge.", s5_status,
+                     (
+                         f"{len(needs_deeper_work)} companies still need deeper evidence work; {len(challenge_ready)} ready for Bull/Bear"
+                         if plan else "Create the research-depth plan, then execute deeper evidence work where required."
+                     )),
         WorkflowStep(6, "thesis_challenge", "Challenge the thesis", "Run independent Bull/Bear analysis on evidence-ready names.", s6_status,
-                     f"{len(adversarial)} companies challenged" if adversarial else "Challenge only companies that pass the evidence gate."),
+                     f"{len(adversarial)} companies challenged" if adversarial else f"{len(challenge_ready)} companies currently pass the evidence gate."),
     ]
 
 
@@ -66,8 +77,8 @@ def next_action(steps: list[WorkflowStep]) -> tuple[WorkflowStep | None, str]:
                 "screening": "Review/tune strategies if needed, then run screening to build the candidate universe.",
                 "financial": "Review the candidate list, then run automatic financial analysis.",
                 "company_research": "Review financial decisions, then research the surviving/approved companies.",
-                "deep_research": "Inspect research evidence, resolve obvious source gaps if needed, then create the deep-research allocation plan.",
-                "thesis_challenge": "Open the Thesis Challenge workspace and run Bull/Bear analysis for evidence-ready companies.",
+                "deep_research": "Create/review the depth plan, then run deeper evidence-gap research for SOURCE_GAP / STRUCTURED / TARGETED / DEEP companies. The plan will be rebuilt automatically afterward.",
+                "thesis_challenge": "The evidence gate is now satisfied for at least one company. Run Bull/Bear thesis challenge and inspect what survives, what contradicts, and what remains unknown.",
             }
             return step, actions[step.key]
     return None, "The current research run has completed all implemented stages. Review the results before starting another run or moving to the next product milestone."
