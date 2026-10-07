@@ -82,8 +82,8 @@ def next_action(steps: list[WorkflowStep]) -> tuple[WorkflowStep | None, str]:
             }
             return step, actions[step.key]
     return None, (
-        "The six-step research run is complete. Open **Research Confidence** to judge whether the evidence foundation is strong enough "
-        "for the next product layer: valuation context."
+        "The six-step research run is complete. Open **Research Confidence** to verify the evidence foundation, then use "
+        "**Valuation Intelligence** only for companies whose research-quality gate is ready."
     )
 
 
