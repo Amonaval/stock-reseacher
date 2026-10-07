@@ -44,6 +44,7 @@ Examples:
 - a surviving Bull thesis does not override low Research Confidence;
 - high Research Confidence does not imply an attractive company;
 - a large theoretical valuation discount does not erase thesis fragility;
+- a favorable Base valuation does not erase a very wide Bear-case downside;
 - an operator override remains visible rather than rewriting the original system decision.
 
 ---
@@ -78,21 +79,32 @@ The thesis depends heavily on unresolved assumptions, contradictions or fragile 
 
 The Bear case is better supported than the Bull case on the current evidence.
 
+This state remains visible even when valuation is missing; a known Bear-dominated thesis should not be hidden behind a later missing valuation step.
+
 ### `CONTESTED_RESEARCH_CASE`
 
 Bull and Bear interpretations remain materially balanced after adversarial review.
 
 ### `HIGH_PRIORITY_RESEARCH_CANDIDATE`
 
-The current contract requires:
+The current v1 contract requires:
 
 - Research Confidence gate passed;
 - Bull case survives adversarial review;
 - valuation context is available;
 - the Base valuation scenario is meaningfully above the **captured** research-run price;
-- thesis fragility is not extreme.
+- thesis fragility is not extreme;
+- the Bear valuation scenario is not wider than approximately **-35% versus the captured price**.
 
 This means the case deserves investor attention. It does **not** mean BUY.
+
+The -35% Bear-scenario boundary is a v1 synthesis policy, not an estimated loss probability. It is deliberately visible and should be revisited after real-run validation.
+
+### `POSITIVE_THESIS_WIDE_DOWNSIDE`
+
+The Bull thesis survives, but the Bear valuation scenario is approximately -35% or worse versus the captured price.
+
+This prevents attractive Base-case upside from automatically creating a high-priority state when scenario asymmetry remains severe.
 
 ### `POSITIVE_THESIS_NEAR_BASE_VALUE`
 
@@ -101,6 +113,30 @@ The Bull thesis survives, but the captured price is broadly around the Base valu
 ### `POSITIVE_THESIS_VALUATION_STRETCHED`
 
 The Bull thesis survives, but the captured price is above the Base valuation scenario under current assumptions.
+
+---
+
+## State precedence
+
+The synthesis is intentionally not a weighted average.
+
+The broad precedence is:
+
+```text
+Research-quality gap
+    ↓
+Missing/insufficient thesis challenge
+    ↓
+Unresolved unoverridden financial conflict
+    ↓
+Bear-dominated / Fragile / Contested thesis
+    ↓
+Missing valuation context
+    ↓
+Bull-surviving valuation posture
+```
+
+This means strong valuation cannot wash out a serious research/thesis warning.
 
 ---
 
@@ -133,7 +169,7 @@ The system preserves separate dimensions:
 
 - valuation family/method
 - Bear/Base/Bull scenarios
-- Base versus captured-price context
+- Bear/Base/Bull comparison versus the captured run price
 
 The investor should be able to disagree with any one of these dimensions without reverse-engineering a hidden weighted score.
 
@@ -149,6 +185,8 @@ NOT_READY_FOR_INVESTOR_REVIEW
 ```
 
 `READY_FOR_INVESTOR_REVIEW` means the implemented upstream analytical stages are sufficiently complete to review the case.
+
+Risk-dominated, contested or fragile cases can still be `READY_FOR_INVESTOR_REVIEW`: readiness means **complete enough to judge**, not attractive.
 
 It is not a recommendation to invest.
 
@@ -192,7 +230,7 @@ This user-entered conviction is not produced by the system and is not interprete
 
 Free-form notes are also retained.
 
-Refreshing system synthesis from the application preserves the separate Investor Review.
+Refreshing system synthesis preserves the separate Investor Review at the engine level.
 
 ---
 
@@ -217,6 +255,7 @@ Conviction & Decision Synthesis v1 is complete when it can:
 - expose upstream operator overrides;
 - produce an explainable research decision state;
 - prevent Bear/fragility/research gaps from being hidden by attractive valuation;
+- prevent a very wide Bear scenario from automatically qualifying for high-priority status;
 - list reasons and blockers;
 - show unresolved questions;
 - show what must be true;
