@@ -11,6 +11,7 @@ Thumbs.db
 
 # Runtime/generated research outputs
 runs/
+jobs/
 data/*
 !data/*_SAMPLE.json
 !data/master_strategies_SAMPLE.json
