@@ -7,7 +7,8 @@ from typing import Any
 
 VALUATION_FAMILIES = {
     "GENERAL_EARNINGS": "General / quality business",
-    "FINANCIAL_PB": "Bank / NBFC / financial business",
+    "FINANCIAL_PB": "Bank / NBFC / lending financial business",
+    "INSURANCE_EMBEDDED_VALUE": "Insurance business — embedded-value framework",
     "CYCLICAL_NORMALIZED": "Cyclical / commodity business",
     "UTILITY_ASSET_HEAVY": "Utility / regulated / asset-heavy business",
     "INSUFFICIENT": "Insufficient valuation inputs",
@@ -48,10 +49,11 @@ def classify_valuation_family(company, override: str | None = None) -> dict[str,
         }
 
     text = _text_blob(company)
+    name = str(company.company or "").lower()
+    insurance_terms = ["embedded value", "value of new business", "vnb margin", "solvency ratio", "insurance premium"]
     financial_terms = [
         "net interest margin", "npa", "gross npa", "net npa", "deposits", "advances",
-        "credit cost", "capital adequacy", "loan book", "banking", "bank ", "nbfc",
-        "insurance premium", "solvency ratio",
+        "credit cost", "capital adequacy", "loan book", "banking", "nbfc",
     ]
     cyclical_terms = [
         "commodity", "steel", "aluminium", "aluminum", "copper", "zinc", "mining",
@@ -62,9 +64,12 @@ def classify_valuation_family(company, override: str | None = None) -> dict[str,
         "generation capacity", "power generation", "toll road", "regulated return",
     ]
 
-    if any(term in text for term in financial_terms):
+    if any(term in text for term in insurance_terms) or "insurance" in name:
+        family = "INSURANCE_EMBEDDED_VALUE"
+        reason = "Research evidence indicates an insurance business. A serious insurer valuation needs embedded-value / VNB context, which v1 does not yet collect automatically."
+    elif any(term in text for term in financial_terms) or " bank" in name or name.endswith("bank"):
         family = "FINANCIAL_PB"
-        reason = "Research evidence contains banking/financial-business terminology; P/B with sustainable ROE is more appropriate than a generic industrial multiple."
+        reason = "Research evidence indicates a bank/NBFC/lending business; P/B with sustainable ROE is more appropriate than a generic industrial earnings multiple."
     elif any(term in text for term in cyclical_terms):
         family = "CYCLICAL_NORMALIZED"
         reason = "Research evidence indicates a cyclical/commodity earnings profile; normalized earnings are preferred over latest-period earnings."
@@ -170,14 +175,6 @@ def _multiple_anchor(company, *, allow_current_fallback: bool = True) -> dict:
     }
 
 
-def _scenario_multiple(base: float, *, bear_factor=0.75, bull_factor=1.25):
-    return {
-        "bear": round(max(3.0, base * bear_factor), 2),
-        "base": round(base, 2),
-        "bull": round(min(80.0, base * bull_factor), 2),
-    }
-
-
 def _price_scenarios_from_eps(eps: float, multiples: dict[str, float]):
     return {name: round(max(0.0, eps * multiple), 2) for name, multiple in multiples.items()}
 
@@ -188,9 +185,8 @@ def _financial_pb_valuation(company, assumptions: dict | None = None) -> dict:
     book = _num(a.get("book_value")) or _latest(company, "book_value")
     roe = _num(a.get("roe_latest")) or _num(a.get("roe")) or _latest(company, "roe")
     if book is None or book <= 0 or roe is None:
-        return {"ok": False, "reason": "Book value and sustainable ROE are required for the financial-business P/B framework."}
+        return {"ok": False, "reason": "Book value and sustainable ROE are required for the bank/NBFC P/B framework."}
 
-    # Justified P/B = (ROE - g) / (cost of equity - g). Inputs are explicit and editable.
     roe_dec = roe / 100.0 if roe > 1 else roe
     scenarios = {
         "bear": {
@@ -307,7 +303,13 @@ def value_company(company, *, family_override: str | None = None, assumptions: d
         result["warnings"].append("Current market price is missing; upside/downside cannot be calculated.")
 
     family = family_info["family"]
-    if family == "FINANCIAL_PB":
+    if family == "INSURANCE_EMBEDDED_VALUE":
+        core = {
+            "ok": False,
+            "reason": "Insurance valuation requires embedded value / VNB data. Valuation Intelligence v1 deliberately blocks generic P/E or P/B substitution for insurers.",
+        }
+        scenarios = {}
+    elif family == "FINANCIAL_PB":
         core = _financial_pb_valuation(company, assumptions)
         if core.get("ok"):
             scenarios = {
