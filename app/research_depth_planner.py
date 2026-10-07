@@ -14,14 +14,14 @@ def plan_research_depth(memories: list[dict], budgets: dict | None = None) -> di
     This planner is intentionally *not* an investment-conviction engine. It answers:
     "How much more research does this company deserve given what we currently know?"
 
-    Inputs may include the newer investor dossier fields produced by
-    ``company_research_engine``:
+    New constitution-aware inputs:
       - research_state
       - mission_coverage
       - open_questions
       - missing_document_types
 
-    Older memories remain supported for backward compatibility.
+    ``research_readiness`` remains visible as a useful diagnostic, but is not used as
+    a second opaque hard cutoff once the explicit evidence/source/mission gates pass.
     """
     budgets = budgets or {"STRUCTURED": 100, "TARGETED": 50, "DEEP": 25, "ADVERSARIAL": 15}
     rows = []
@@ -45,8 +45,6 @@ def plan_research_depth(memories: list[dict], budgets: dict | None = None) -> di
         open_questions = list(m.get("open_questions") or [])
         missing_doc_types = list(m.get("missing_document_types") or [])
 
-        # New constitution-aware gates take precedence. Older runs without dossier
-        # fields fall through to the legacy evidence thresholds below.
         if fin_decision and fin_decision not in {"ADVANCE", "WATCHLIST", "USER_INCLUDE"}:
             stage = "FINANCIAL_HOLD"
             reason = f"Financial stage is {fin_decision}; company is retained but not allocated expensive research."
@@ -70,18 +68,14 @@ def plan_research_depth(memories: list[dict], budgets: dict | None = None) -> di
             reason = "Enough evidence for targeted gap resolution, but not yet for deep thesis work."
         elif research_state and research_state != "EVIDENCE_READY":
             stage = "DEEP"
-            reason = "Evidence is meaningful, but the company-research contract still has unresolved questions requiring deep work."
+            reason = "Evidence is meaningful, but the company-research contract still has unresolved critical questions requiring deep work."
         elif risks == 0:
             stage = "DEEP"
             reason = "Evidence coverage supports deep research, but explicit downside/risk evidence is still missing."
-        elif ready < 70:
-            stage = "DEEP"
-            reason = "Deep research is justified; evidence readiness is not yet strong enough for adversarial handoff."
         else:
             stage = "ADVERSARIAL"
-            reason = "Source coverage, analyst-mission coverage, evidence quality and downside evidence support an independent Bull/Bear challenge."
+            reason = "Core/current sources, analyst-mission coverage, evidence quality and explicit downside evidence support an independent Bull/Bear challenge."
 
-        # Research priority ranks work allocation only. It is not expected return.
         priority = (
             ready * 0.35
             + evq * 0.25
@@ -107,8 +101,6 @@ def plan_research_depth(memories: list[dict], budgets: dict | None = None) -> di
             "research_priority": round(priority, 1),
         })
 
-    # Capacity budgets are applied only after evidence gates. A company that passes
-    # a gate but falls outside the current budget is queued, never silently dropped.
     for stage in ["STRUCTURED", "TARGETED", "DEEP", "ADVERSARIAL"]:
         candidates = sorted(
             [r for r in rows if r["stage"] == stage],
@@ -131,11 +123,7 @@ def plan_research_depth(memories: list[dict], budgets: dict | None = None) -> di
     utilization = {}
     for stage in ["STRUCTURED", "TARGETED", "DEEP", "ADVERSARIAL"]:
         admitted = sum(1 for r in rows if r["stage"] == stage)
-        passed_gate = sum(
-            1
-            for r in rows
-            if r.get("system_stage") == stage
-        )
+        passed_gate = sum(1 for r in rows if r.get("system_stage") == stage)
         utilization[stage] = {
             "budget": int(budgets.get(stage, 0)),
             "passed_gate": passed_gate,
@@ -153,10 +141,7 @@ def plan_research_depth(memories: list[dict], budgets: dict | None = None) -> di
         "FINANCIAL_HOLD": 6,
     }
     return {
-        "rows": sorted(
-            rows,
-            key=lambda x: (stage_order.get(x["stage"], 99), -x["research_priority"]),
-        ),
+        "rows": sorted(rows, key=lambda x: (stage_order.get(x["stage"], 99), -x["research_priority"])),
         "counts": counts,
         "budgets": budgets,
         "budget_utilization": utilization,
