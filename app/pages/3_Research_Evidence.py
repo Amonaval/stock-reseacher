@@ -5,8 +5,8 @@ import pandas as pd
 import streamlit as st
 
 from navigation import render_navigation
-from company_research_engine import run_company_research_engine
 from research_contracts import validate_company_research_contract, contract_status
+from background_jobs import start_job, sync_session_from_jobs, active_jobs
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = ROOT / "runs"
@@ -25,6 +25,15 @@ if run is None:
     st.page_link("main.py", label="← Return to Guided Research")
     st.stop()
 
+sync_session_from_jobs(st, run.run_id)
+run = st.session_state.get("run") or run
+busy_jobs = active_jobs(run.run_id)
+busy = bool(busy_jobs)
+if busy:
+    job = busy_jobs[0]
+    st.info(f"🧵 Background work continues: **{job.get('label')}** — {job.get('progress_message')} ({float(job.get('progress') or 0)*100:.0f}%). You may navigate away.")
+    st.page_link("pages/6_Background_Jobs.py", label="Monitor background work →")
+
 companies = list(run.companies.values())
 research_candidates = [
     c for c in companies
@@ -39,52 +48,26 @@ with st.expander("Retry / customize company research", expanded=False):
         st.info("No companies are currently approved for company research. Review financial-stage selections in Operator Control first.")
     else:
         names = [c.company for c in research_candidates]
-        selected = st.multiselect(
-            "Companies to research",
-            names,
-            default=names,
-            help="Research all survivors or retry only selected companies.",
-        )
+        selected = st.multiselect("Companies to research", names, default=names)
         c1, c2, c3 = st.columns(3)
-        per_type = c1.number_input(
-            "Max sources per document type", min_value=1, max_value=5, value=2,
-            help="Prevents over-fetching. The researcher ranks sources and fetches only the highest-value documents per type.",
-        )
-        min_score = c2.number_input(
-            "Minimum source-quality score", min_value=0, max_value=100, value=45,
-            help="Lower values broaden coverage; higher values prefer authoritative sources.",
-        )
-        use_llm = c3.checkbox(
-            "Use configured LLM for semantic extraction", value=False,
-            help="If disabled, deterministic source excerpts are still extracted.",
-        )
+        per_type = c1.number_input("Max sources per document type", min_value=1, max_value=5, value=2)
+        min_score = c2.number_input("Minimum source-quality score", min_value=0, max_value=100, value=45)
+        use_llm = c3.checkbox("Use configured LLM for semantic extraction", value=False)
 
-        if st.button("Research selected companies", type="primary", disabled=not selected):
-            bar = st.progress(0)
-            message = st.empty()
-            try:
-                def progress(i, n, company, stage):
-                    bar.progress(i / max(n, 1))
-                    message.write(f"{i}/{n} · {company} · {stage.replace('_', ' ')}")
-
-                memories = run_company_research_engine(
-                    run,
-                    st.session_state.get("cdp_url", "http://127.0.0.1:9222"),
-                    company_names=selected,
-                    use_llm=use_llm,
-                    max_sources_per_type=int(per_type),
-                    min_source_score=float(min_score),
-                    progress=progress,
-                )
-                st.session_state.research_memories = memories
-                run.save(RUNS)
-                message.empty()
-                states = run.stage_summary.get("research", {}).get("states", {})
-                st.success(f"Company research completed. Research states: {states}")
-            except Exception as exc:
-                run.log("RESEARCH", "ENGINE_FAILED", str(exc), status="ERROR")
-                run.save(RUNS)
-                st.error(str(exc))
+        if st.button("Research selected companies in background", type="primary", disabled=not selected or busy):
+            start_job(
+                "company_research",
+                {
+                    "run_id": run.run_id,
+                    "cdp_url": st.session_state.get("cdp_url", "http://127.0.0.1:9222"),
+                    "company_names": selected,
+                    "use_llm": bool(use_llm),
+                    "max_sources_per_type": int(per_type),
+                    "min_source_score": float(min_score),
+                },
+                label="Research selected companies",
+            )
+            st.rerun()
 
 summary = run.stage_summary.get("research", {})
 memories = st.session_state.get("research_memories") or []
@@ -152,57 +135,45 @@ if research_candidates:
     b.metric("Mission coverage", f"{dossier.get('mission_coverage', 0)}%")
     c.metric("Documents", len(company.documents))
     d.metric("Evidence items", len(company.evidence))
+    st.info(f"**What happens next:** {dossier.get('what_happens_next', 'Run company research or resolve remaining source gaps.')}")
 
-    st.info(f"**What happens next:** {dossier.get('what_happens_next', 'Run company research or resolve remaining source gaps.')} ")
-
-    with st.expander("1. What the researcher attempted", expanded=False):
+    with st.expander("1. What the researcher attempted"):
         attempts = getattr(company, "source_attempts", []) or []
         if attempts:
-            adf = pd.DataFrame([{
-                "Time": a.get("at", "")[11:19],
-                "Stage": a.get("stage"),
-                "Provider": a.get("provider"),
-                "Status": a.get("status"),
-                "Document type": a.get("doc_type"),
-                "Source score": a.get("source_score"),
-                "What happened": a.get("message"),
-                "URL": a.get("url"),
-            } for a in attempts])
-            st.dataframe(adf, use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame([{
+                "Time": a.get("at", "")[11:19], "Stage": a.get("stage"), "Provider": a.get("provider"),
+                "Status": a.get("status"), "Document type": a.get("doc_type"), "Source score": a.get("source_score"),
+                "What happened": a.get("message"), "URL": a.get("url"),
+            } for a in attempts]), use_container_width=True, hide_index=True)
         else:
             st.info("No source-acquisition attempt has been recorded yet.")
 
     with st.expander("2. Sources / documents acquired", expanded=True):
         if company.documents:
-            drows = []
-            for doc in company.documents:
-                drows.append({
-                    "Type": doc.get("doc_type"), "Title": doc.get("title"), "Date": doc.get("document_date"),
-                    "Source class": doc.get("source_class"), "Source score": doc.get("source_score"),
-                    "Domain": doc.get("source_domain"), "URL": doc.get("url"), "Pages": doc.get("page_count"),
-                })
-            st.dataframe(pd.DataFrame(drows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame([{
+                "Type": doc.get("doc_type"), "Title": doc.get("title"), "Date": doc.get("document_date"),
+                "Source class": doc.get("source_class"), "Source score": doc.get("source_score"),
+                "Domain": doc.get("source_domain"), "URL": doc.get("url"), "Pages": doc.get("page_count"),
+            } for doc in company.documents]), use_container_width=True, hide_index=True)
         else:
             st.error("SOURCE_GAP: no usable research document was acquired for this company.")
 
     with st.expander("3. Fundamental analyst missions", expanded=True):
         missions = dossier.get("missions", [])
         if missions:
-            mdf = pd.DataFrame([{
+            st.dataframe(pd.DataFrame([{
                 "Mission": m.get("label"), "Status": m.get("status"), "Evidence": m.get("evidence_count"), "Why it matters": m.get("why"),
-            } for m in missions])
-            st.dataframe(mdf, use_container_width=True, hide_index=True)
+            } for m in missions]), use_container_width=True, hide_index=True)
             for mission in missions:
-                if not mission.get("findings"):
-                    continue
-                st.markdown(f"**{mission.get('label')}**")
-                for finding in mission.get("findings", []):
-                    st.write(f"- {finding.get('finding')}")
-                    st.caption(f"{finding.get('document') or 'Source'} · page {finding.get('page') or 'NA'} · evidence {finding.get('evidence_id')}")
+                if mission.get("findings"):
+                    st.markdown(f"**{mission.get('label')}**")
+                    for finding in mission.get("findings", []):
+                        st.write(f"- {finding.get('finding')}")
+                        st.caption(f"{finding.get('document') or 'Source'} · page {finding.get('page') or 'NA'} · evidence {finding.get('evidence_id')}")
         else:
             st.info("Run company research to build the analyst mission dossier.")
 
-    with st.expander("4. Risks, catalysts & management claims", expanded=False):
+    with st.expander("4. Risks, catalysts & management claims"):
         r1, r2, r3 = st.columns(3)
         with r1:
             st.markdown("**Risks / governance**")
@@ -227,13 +198,12 @@ if research_candidates:
         else:
             st.write("- Run/retry research and acquire authoritative source evidence.")
 
-    with st.expander("6. Raw evidence ledger", expanded=False):
+    with st.expander("6. Raw evidence ledger"):
         if company.evidence:
-            erows = [{
+            st.dataframe(pd.DataFrame([{
                 "Theme": e.get("theme"), "Type": e.get("kind"), "Finding": e.get("claim") or e.get("excerpt"),
                 "Document": e.get("document_title"), "Page": e.get("page"), "Evidence ID": e.get("evidence_id"), "Confidence": e.get("confidence"),
-            } for e in company.evidence]
-            st.dataframe(pd.DataFrame(erows), use_container_width=True, hide_index=True)
+            } for e in company.evidence]), use_container_width=True, hide_index=True)
         else:
             st.warning("No source-linked evidence has been extracted yet.")
 
