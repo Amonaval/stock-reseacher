@@ -13,6 +13,7 @@ def render_navigation(*, show_settings_hint: bool = True) -> None:
         st.header("Navigate")
         st.page_link("main.py", label="🏠 Guided Research", help="Normal end-to-end workflow")
         st.page_link("pages/5_User_Guide.py", label="📘 User Guide", help="First-run walkthrough and terminology")
+        st.page_link("pages/6_Background_Jobs.py", label="🧵 Background Jobs", help="Monitor long-running work while navigating freely")
         st.divider()
         st.caption("Specialist workspaces")
         st.page_link("pages/3_Research_Evidence.py", label="🔎 Research Evidence")
