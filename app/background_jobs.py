@@ -99,8 +99,7 @@ def jobs_for_run(run_id: str) -> list[dict]:
 
 def active_jobs(run_id: str | None = None) -> list[dict]:
     rows = []
-    paths = JOBS_DIR.glob("job-*.json")
-    for path in paths:
+    for path in JOBS_DIR.glob("job-*.json"):
         try:
             job = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -123,7 +122,8 @@ def load_run(run_id: str):
 def sync_session_from_jobs(st, run_id: str | None):
     """Refresh persistent run/results after detached workers complete.
 
-    Safe to call on every Streamlit rerun/page navigation.
+    Safe to call on every Streamlit rerun/page navigation. The worker is a separate
+    process, so navigation does not cancel it.
     """
     if not run_id:
         return []
@@ -141,8 +141,11 @@ def sync_session_from_jobs(st, run_id: str | None):
             if job["job_id"] in applied:
                 continue
             result = job.get("result") or {}
+            updates = result.get("session_updates") or {}
             key = result.get("session_key")
             if key:
-                st.session_state[key] = result.get("value")
+                updates[key] = result.get("value")
+            for session_key, value in updates.items():
+                st.session_state[session_key] = value
             applied.add(job["job_id"])
     return jobs
